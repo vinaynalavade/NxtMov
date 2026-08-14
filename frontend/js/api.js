@@ -2,15 +2,23 @@
 
 export const getApiBase = () => {
     const hostname = window.location.hostname;
+    const protocol = window.location.protocol;
 
-    // Production — GitHub Pages
-    if (hostname.endsWith("github.io")) {
+    // Production: GitHub Pages
+    if (hostname === "vinaynalavade.github.io") {
         return "https://nxtmov-api.onrender.com/api/v1";
     }
 
     // Local development
-    const host = hostname || "127.0.0.1";
-    return `http://${host}:8000/api/v1`;
+    if (
+        hostname === "localhost" ||
+        hostname === "127.0.0.1"
+    ) {
+        return `${protocol}//${hostname}:8000/api/v1`;
+    }
+
+    // Fallback
+    return "https://nxtmov-api.onrender.com/api/v1";
 };
 
 export const API_BASE = getApiBase();
