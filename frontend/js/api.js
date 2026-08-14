@@ -1,12 +1,16 @@
 // Central API Client for NxtMov
 
 export const getApiBase = () => {
-  const port = window.location.port;
-  if (port && port !== "8000") {
-    const host = window.location.hostname || "127.0.0.1";
+    const hostname = window.location.hostname;
+
+    // Production — GitHub Pages
+    if (hostname.endsWith("github.io")) {
+        return "https://nxtmov-api.onrender.com/api/v1";
+    }
+
+    // Local development
+    const host = hostname || "127.0.0.1";
     return `http://${host}:8000/api/v1`;
-  }
-  return "/api/v1";
 };
 
 export const API_BASE = getApiBase();
@@ -156,7 +160,9 @@ export class API {
     } catch (error) {
       console.error(`API Error [${options.method || 'GET'} ${endpoint}]:`, error);
       if (error instanceof TypeError && (error.message.includes("fetch") || error.message.includes("NetworkError") || error.message.includes("Failed to fetch"))) {
-        throw new Error("Unable to connect to NxtMov server. Please ensure the backend is running at http://127.0.0.1:8000.");
+        throw new Error(
+    "Unable to connect to NxtMov server. Please check that the backend is available."
+);
       }
       throw error;
     }
