@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NxtMov — Unified Job & Recruitment Management Platform</title>
+  <meta name="description"
+    content="Unified Job and Recruitment Management Platform for individual job seekers and recruitment consultancies.">
+  <script>
+    (function () {
+      const savedTheme = localStorage.getItem('nxtmov_theme');
+      if (savedTheme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      } else {
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    })();
+  </script>
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <link rel="stylesheet" href="./css/main.css">
+  <link rel="stylesheet" href="./css/components.css">
+</head>
+
+<body>
+  <div id="app">
+    <!-- Sidebar Backdrop for Mobile -->
+    <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+
+    <!-- Single Authoritative Left Sidebar -->
+    <aside id="app-sidebar" class="app-sidebar">
+      <div class="sidebar-brand-header">
+        <a href="#/dashboard" class="sidebar-brand-logo">
+          ⚡ <span>NxtMov</span>
+        </a>
+        <button id="sidebar-toggle-btn" class="sidebar-toggle-btn" title="Toggle Sidebar" aria-label="Toggle Sidebar">
+          ☰
+        </button>
+      </div>
+
+      <!-- Scrollable Categorized Nav Items — rendered by sidebar.js -->
+      <nav id="sidebar-nav" class="sidebar-nav-container" aria-label="Main Navigation">
+      </nav>
+
+      <!-- Bottom User Profile Card -->
+      <div id="sidebar-user-card" class="sidebar-user-card">
+        <div id="sidebar-user-avatar" class="sidebar-user-avatar">US</div>
+        <div class="sidebar-user-info">
+          <div id="sidebar-user-name" class="sidebar-user-name">User</div>
+          <span id="sidebar-user-role" class="sidebar-user-role">STUDENT</span>
+        </div>
+        <div class="sidebar-user-actions">
+          <a href="#/profile?tab=tab-settings" class="btn-icon" title="Account Settings" style="text-decoration: none;">⚙️</a>
+          <button id="sidebar-logout-btn" class="btn-icon" title="Log Out" aria-label="Log Out">↪</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Container (Top Header + Content) -->
+    <div id="app-main-container" class="app-main-container">
+      <!-- Minimal Top Header -->
+      <header class="top-header">
+        <div class="top-header-left">
+          <button id="mobile-sidebar-toggle-btn" class="sidebar-toggle-btn mobile-only" title="Open Menu" aria-label="Open Menu">
+            ☰
+          </button>
+          <div id="page-breadcrumb-title" class="page-breadcrumb-title">
+            Dashboard
+          </div>
+        </div>
+
+        <div class="top-header-right">
+          <!-- Notification Bell -->
+          <div id="notification-bell-container" style="position: relative; display: none;">
+            <button id="notif-bell-btn" class="btn-icon" title="Notifications" aria-label="Notifications" style="font-size: 1rem; position: relative; padding: 0.3rem 0.5rem;">
+              🔔
+              <span id="unread-notif-badge" class="badge-status badge-danger" style="display: none; position: absolute; top: -4px; right: -4px; font-size: 0.55rem; padding: 0.1rem 0.3rem; border-radius: 999px; min-width: 16px; text-align: center;">0</span>
+            </button>
+            <div id="notif-dropdown" class="notif-dropdown-menu">
+              <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; margin-bottom: 0.75rem;">
+                <h4 style="font-size: 0.85rem; font-weight: 700; color: var(--text-primary); margin: 0;">Notifications</h4>
+                <button id="mark-all-read-btn" class="btn btn-ghost" style="font-size: 0.7rem; padding: 0.2rem 0.4rem;">Mark all read</button>
+              </div>
+              <div id="notif-list-container" style="display: flex; flex-direction: column; gap: 0.5rem;">
+              </div>
+            </div>
+          </div>
+
+          <!-- Theme Toggle Button -->
+          <button id="theme-toggle-btn" class="btn-icon" title="Toggle Light / Dark Mode" aria-label="Toggle Theme" style="font-size: 0.85rem; padding: 0.3rem 0.5rem;">
+            <span id="theme-toggle-icon">☀️</span>
+          </button>
+
+          <!-- Workspace Context Switcher -->
+          <div id="user-profile-bar" class="workspace-controls" style="display: none;">
+            <select id="workspace-switcher" class="form-control" aria-label="Select Workspace">
+            </select>
+            <button id="create-consultancy-btn" class="btn btn-outline" title="Create a new recruitment consultancy workspace">+ Workspace</button>
+          </div>
+        </div>
+      </header>
+
+      <main id="main-content" class="content">
+        <!-- Dynamic Views Rendered Here -->
+      </main>
+
+      <footer>
+        &copy; 2026 NxtMov Platform. All rights reserved.
+      </footer>
+    </div>
+  </div>
+
+  <script type="module" src="./js/app.js?v=2.0.0"></script>
+</body>
+
+</html>
