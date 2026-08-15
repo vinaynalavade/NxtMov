@@ -180,6 +180,10 @@ export function renderResume() {
   `;
 }
 
+export function initResumeListeners() {
+  initResumeEvents();
+}
+
 export function initResumeEvents() {
   const dropZone = document.getElementById("resume-drop-zone");
   const fileInput = document.getElementById("resume-file-input");

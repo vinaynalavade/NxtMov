@@ -1,8 +1,15 @@
 // Central API Client for NxtMov
 
 export const getApiBase = () => {
-    const hostname = window.location.hostname;
-    const protocol = window.location.protocol;
+    try {
+        const customBase = localStorage.getItem("nxtmov_api_base") || (typeof window !== "undefined" && window.NXTMOV_API_BASE);
+        if (customBase) return customBase.replace(/\/+$/, "");
+    } catch {
+        // Safe fallback if localStorage is blocked
+    }
+
+    const hostname = typeof window !== "undefined" ? window.location.hostname : "";
+    const protocol = typeof window !== "undefined" ? window.location.protocol : "http:";
 
     // Production: GitHub Pages
     if (hostname === "vinaynalavade.github.io") {

@@ -296,6 +296,10 @@ export function renderProfile() {
   `;
 }
 
+export function initProfileListeners() {
+  initProfileEvents();
+}
+
 export function initProfileEvents() {
   // Tabs Navigation
   const tabBtns = document.querySelectorAll(".profile-tab-btn");

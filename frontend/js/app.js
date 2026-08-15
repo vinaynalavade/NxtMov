@@ -18,32 +18,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     // 2. Sidebar controller (single authoritative init)
     initSidebar();
 
-    // 3. Session validation & workspace setup
-    const token = api.getToken();
-    if (token) {
-      try {
-        const data = await api.get("/auth/me");
-        store.setState({ user: data.user, organizations: data.organizations });
-        renderSidebarNav();
-      } catch (e) {
-        console.warn("Session validation notice:", e);
-        api.clearToken();
-        renderSidebarNav();
-      }
-
-      // Workspace switcher (safe init)
-      try { await loadWorkspaceSwitcher(); } catch (err) {
-        console.warn("Workspace switcher init notice:", err);
-      }
-
-      // Notification bell (safe init)
-      try { await initNotificationBell(); } catch (err) {
-        console.warn("Notification bell init notice:", err);
-      }
-    } else {
-      renderSidebarNav();
-    }
-
     // 4. Global logout handler — single source of truth
     const performLogout = () => {
       api.clearToken();
@@ -60,8 +34,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     // 5. Create workspace/consultancy button
     document.getElementById("create-consultancy-btn")?.addEventListener("click", openCreateWorkspaceModal);
 
-    // 6. Initialize SPA Router
+    // 6. Initialize SPA Router immediately (renders active view or login instantly)
     Router.init();
+
+    // 7. Asynchronous session validation & workspace/notification setup
+    validateSessionAsync();
 
   } catch (startupError) {
     console.error("CRITICAL: SPA Startup Exception:", startupError);
@@ -79,6 +56,39 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 });
+
+async function validateSessionAsync() {
+  const token = api.getToken();
+  if (!token) {
+    renderSidebarNav();
+    return;
+  }
+
+  try {
+    const data = await api.get("/auth/me");
+    store.setState({ user: data.user, organizations: data.organizations });
+    renderSidebarNav();
+
+    // Workspace switcher (safe init)
+    try { await loadWorkspaceSwitcher(); } catch (err) {
+      console.warn("Workspace switcher init notice:", err);
+    }
+
+    // Notification bell (safe init)
+    try { await initNotificationBell(); } catch (err) {
+      console.warn("Notification bell init notice:", err);
+    }
+  } catch (e) {
+    console.warn("Session validation notice:", e);
+    api.clearToken();
+    store.setState({ user: null, organizations: [] });
+    renderSidebarNav();
+    if (window.location.hash !== "#/login" && window.location.hash !== "#/register") {
+      window.location.hash = "#/login";
+      Router.handleRoute();
+    }
+  }
+}
 
 /* ================================================================
    THEME TOGGLE — Single handler
