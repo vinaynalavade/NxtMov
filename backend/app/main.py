@@ -28,9 +28,32 @@ app.add_middleware(
 # Include API v1 router
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+def apply_database_migrations():
+    """
+    Applies any pending Alembic database migrations to bring the database schema
+    up to date with the latest models automatically on application startup.
+    Works for both local SQLite and production PostgreSQL environments.
+    """
+    try:
+        from alembic import command
+        from alembic.config import Config
+        backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        alembic_ini_path = os.path.join(backend_dir, "alembic.ini")
+        alembic_dir_path = os.path.join(backend_dir, "alembic")
+        
+        if os.path.exists(alembic_ini_path) and os.path.exists(alembic_dir_path):
+            alembic_cfg = Config(alembic_ini_path)
+            alembic_cfg.set_main_option("script_location", alembic_dir_path)
+            alembic_cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+            command.upgrade(alembic_cfg, "head")
+            print("[ALEMBIC] Successfully applied database migrations to head revision.")
+    except Exception as e:
+        print(f"[ALEMBIC NOTICE] Startup migration execution info: {e}")
+
 @app.on_event("startup")
 def on_startup():
     init_storage_directories()
+    apply_database_migrations()
     try:
         from app.core.database import engine, Base, SessionLocal
         import app.models

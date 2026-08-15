@@ -237,7 +237,10 @@ export class API {
             errorMsg = "Password does not meet the required security requirements.";
           }
         } else if (response.status >= 500) {
-          if (isLoginEndpoint) {
+          const detail = typeof data?.detail === "string" ? data.detail : null;
+          if (detail && !detail.startsWith("<") && !detail.toLowerCase().includes("traceback")) {
+            errorMsg = detail;
+          } else if (isLoginEndpoint) {
             errorMsg = "Something went wrong while signing you in. Please try again.";
           } else if (isRegisterEndpoint) {
             errorMsg = "Something went wrong while creating your account. Please try again.";
@@ -251,7 +254,7 @@ export class API {
       return data;
     } catch (error) {
       if (error instanceof TypeError && (error.message.includes("fetch") || error.message.includes("NetworkError") || error.message.includes("Failed to fetch"))) {
-        throw new Error("Unable to connect to NxtMov server. Please try again.");
+        throw new Error("Unable to connect to NxtMov server. Please check your network connection or try again later.");
       }
       throw error;
     }
