@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from app.core.config import settings
+from app.core.config import settings, STATIC_UPLOADS_DIR, init_storage_directories
 from app.api.v1.api import api_router
 
 app = FastAPI(
@@ -28,11 +28,12 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 
 @app.on_event("startup")
 def on_startup():
+    init_storage_directories()
     try:
         from app.core.database import engine, Base, SessionLocal
         import app.models
         Base.metadata.create_all(bind=engine)
-        
+
         if settings.NXTMOV_DEMO_MODE:
             from app.api.v1.endpoints.auth import ensure_demo_user_exists
             db = SessionLocal()
@@ -43,15 +44,19 @@ def on_startup():
     except Exception as e:
         print(f"[STARTUP NOTICE] Startup schema sync / demo provisioning notice: {e}")
 
-# Determine path to frontend static directory
+# Determine path to frontend static directory & uploads directory
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FRONTEND_DIR = os.path.join(BASE_DIR, "frontend")
+init_storage_directories()
+
+class NoCacheStaticFiles(StaticFiles):
+    def is_not_modified(self, response_headers, request_headers) -> bool:
+        return False
+
+# Mount uploads directory for persistent user assets
+app.mount("/uploads", NoCacheStaticFiles(directory=STATIC_UPLOADS_DIR), name="uploads")
 
 if os.path.exists(FRONTEND_DIR):
-    class NoCacheStaticFiles(StaticFiles):
-        def is_not_modified(self, response_headers, request_headers) -> bool:
-            return False
-
     app.mount("/css", NoCacheStaticFiles(directory=os.path.join(FRONTEND_DIR, "css")), name="css")
     app.mount("/js", NoCacheStaticFiles(directory=os.path.join(FRONTEND_DIR, "js")), name="js")
     app.mount("/static", NoCacheStaticFiles(directory=FRONTEND_DIR), name="static")
@@ -59,7 +64,7 @@ if os.path.exists(FRONTEND_DIR):
 @app.middleware("http")
 async def add_no_cache_header(request, call_next):
     response = await call_next(request)
-    if request.url.path.startswith(("/static", "/css", "/js")):
+    if request.url.path.startswith(("/static", "/css", "/js", "/uploads")):
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"

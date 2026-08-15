@@ -3,12 +3,13 @@ import { store } from "./store.js";
 import { Router } from "./router.js";
 import { showToast, createModal } from "./components.js";
 import { initSidebar, renderSidebarNav } from "./sidebar.js";
+import { getIcon } from "./icons.js";
 
 /* ================================================================
    APP INITIALIZATION — Single Entry Point
    ================================================================ */
 document.addEventListener("DOMContentLoaded", async () => {
-  console.log("⚡ NxtMov SPA v2.0 Initializing...");
+  console.log("NxtMov SPA v2.0 Initializing...");
 
   try {
     // 1. Theme toggle (must run before any rendering)
@@ -87,7 +88,7 @@ function initThemeToggle() {
   const toggleIcon = document.getElementById("theme-toggle-icon");
 
   const updateUI = (theme) => {
-    if (toggleIcon) toggleIcon.textContent = theme === "dark" ? "🌙" : "☀️";
+    if (toggleIcon) toggleIcon.innerHTML = theme === "dark" ? getIcon("sun", "", 18) : getIcon("moon", "", 18);
     if (toggleBtn) toggleBtn.title = theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode";
   };
 
@@ -109,31 +110,72 @@ function initThemeToggle() {
    WORKSPACE SWITCHER
    ================================================================ */
 async function loadWorkspaceSwitcher() {
-  const switcher = document.getElementById("workspace-switcher");
-  if (!switcher) return;
+  const mount = document.getElementById("workspace-mount");
+  const bar = document.getElementById("user-profile-bar");
+  if (!mount || !bar) return;
+
+  const token = api.getToken();
+  if (!token) {
+    bar.style.display = "none";
+    return;
+  }
 
   try {
-    const workspaces = await api.get("/organizations");
-    if (!workspaces || !Array.isArray(workspaces)) return;
+    bar.style.display = "flex";
+    const data = await api.get("/auth/me");
+    const workspaces = data.organizations || [];
 
-    switcher.innerHTML = workspaces.map(w => `
-      <option value="${w.id}">
-        ${w.type === 'INDIVIDUAL' ? '👤 Personal' : '🏢 ' + w.name}
-      </option>
-    `).join("");
-
-    switcher.onchange = async (e) => {
-      const orgId = parseInt(e.target.value);
-      try {
-        const res = await api.post(`/auth/switch?organization_id=${orgId}`);
-        api.setToken(res.access_token);
-        showToast("Workspace switched!");
-        renderSidebarNav();
-        Router.handleRoute();
-      } catch (err) {
-        showToast(err.message || "Failed to switch workspace.", "danger");
+    // Parse active organization ID from JWT token payload
+    let activeOrgId = null;
+    try {
+      const parts = token.split(".");
+      if (parts.length === 3) {
+        const payload = JSON.parse(atob(parts[1]));
+        activeOrgId = payload.org_id;
       }
-    };
+    } catch (e) {
+      console.warn("Token payload parse notice:", e);
+    }
+
+    if (workspaces.length <= 1) {
+      // Exactly 1 workspace: Render simple non-dropdown badge
+      const singleOrg = workspaces[0] || { name: "Personal", type: "INDIVIDUAL" };
+      const displayName = singleOrg.type === "INDIVIDUAL" ? "Personal" : singleOrg.name;
+      mount.innerHTML = `
+        <span class="workspace-single-badge" title="Active Workspace">
+          ${getIcon(singleOrg.type === "INDIVIDUAL" ? "user" : "briefcase", "", 14)}
+          <span>${displayName}</span>
+        </span>
+      `;
+    } else {
+      // Multiple workspaces: Render interactive dropdown selector
+      mount.innerHTML = `
+        <select id="workspace-switcher" class="workspace-dropdown-select" aria-label="Select Active Workspace">
+          ${workspaces.map(w => {
+            const isSelected = activeOrgId ? w.id === activeOrgId : false;
+            const label = w.type === 'INDIVIDUAL' ? 'Personal' : w.name;
+            return `<option value="${w.id}" ${isSelected ? 'selected' : ''}>${label}</option>`;
+          }).join("")}
+        </select>
+      `;
+
+      const switcher = document.getElementById("workspace-switcher");
+      if (switcher) {
+        switcher.onchange = async (e) => {
+          const orgId = parseInt(e.target.value);
+          try {
+            const res = await api.post(`/auth/switch?organization_id=${orgId}`);
+            api.setToken(res.access_token);
+            showToast("Workspace switched!");
+            await loadWorkspaceSwitcher();
+            renderSidebarNav();
+            Router.handleRoute();
+          } catch (err) {
+            showToast(err.message || "Failed to switch workspace.", "danger");
+          }
+        };
+      }
+    }
   } catch (err) {
     console.warn("Failed to load workspaces:", err);
   }

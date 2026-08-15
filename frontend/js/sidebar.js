@@ -1,5 +1,6 @@
 import { store } from "./store.js";
 import { api } from "./api.js";
+import { getIcon } from "./icons.js";
 
 /* ================================================================
    Navigation Schema — Single source of truth for all sidebar links
@@ -9,46 +10,46 @@ const NAVIGATION_SCHEMA = [
     category: "WORKSPACE",
     roles: ["STUDENT", "MENTOR", "COUNSELOR", "RECRUITER", "ADMIN"],
     items: [
-      { path: "/dashboard", label: "Dashboard", icon: "📊" }
+      { path: "/dashboard", label: "Dashboard", icon: "dashboard" }
     ]
   },
   {
     category: "TALENT ECOSYSTEM",
     roles: ["STUDENT", "ADMIN"],
     items: [
-      { path: "/profile", label: "My Profile", icon: "👤" },
-      { path: "/resume", label: "Resumes & AI", icon: "📄" },
-      { path: "/recommendations", label: "Role Matches", icon: "🎯" },
-      { path: "/applications", label: "My Applications", icon: "📌" },
-      { path: "/opportunities", label: "Requirements", icon: "💼" }
+      { path: "/profile", label: "My Profile", icon: "profile" },
+      { path: "/resume", label: "Resume & ATS", icon: "resume" },
+      { path: "/recommendations", label: "Role Matches", icon: "recommendations" },
+      { path: "/applications", label: "My Applications", icon: "applications" },
+      { path: "/opportunities", label: "Requirements", icon: "opportunities" }
     ]
   },
   {
     category: "RECRUITMENT & CRM",
     roles: ["ADMIN", "RECRUITER", "COUNSELOR", "MENTOR"],
     items: [
-      { path: "/candidates", label: "Candidates Roster", icon: "👥" },
-      { path: "/opportunities", label: "Job Openings", icon: "💼" },
-      { path: "/applications", label: "Applications Pipeline", icon: "📋" },
-      { path: "/submissions", label: "Client Submissions", icon: "🚀" },
-      { path: "/contacts", label: "HR Contacts", icon: "📇" },
-      { path: "/followups", label: "Follow-ups", icon: "📞" }
+      { path: "/candidates", label: "Candidates Roster", icon: "candidates" },
+      { path: "/opportunities", label: "Job Openings", icon: "opportunities" },
+      { path: "/applications", label: "Applications Pipeline", icon: "applications" },
+      { path: "/submissions", label: "Client Submissions", icon: "submissions" },
+      { path: "/contacts", label: "HR Contacts", icon: "contacts" },
+      { path: "/followups", label: "Follow-ups", icon: "followups" }
     ]
   },
   {
     category: "MENTORSHIP & JOURNEY",
     roles: ["MENTOR", "COUNSELOR", "ADMIN"],
     items: [
-      { path: "/mentor", label: "My Students", icon: "🎓" }
+      { path: "/mentor", label: "My Students", icon: "mentor" }
     ]
   },
   {
     category: "DATA & SYSTEM",
     roles: ["ADMIN", "RECRUITER"],
     items: [
-      { path: "/companies", label: "Companies", icon: "🏢" },
-      { path: "/import", label: "Importer", icon: "📥" },
-      { path: "/team", label: "Team & Workspaces", icon: "⚙️" }
+      { path: "/companies", label: "Companies", icon: "companies" },
+      { path: "/import", label: "Importer", icon: "import" },
+      { path: "/team", label: "Team & Workspaces", icon: "team" }
     ]
   }
 ];
@@ -77,11 +78,13 @@ export function getUserRole() {
    Sidebar Initialization — ONE authoritative controller
    ================================================================ */
 let sidebarInitialized = false;
+let collapseTimer = null;
 
 export function initSidebar() {
   if (sidebarInitialized) return; // Prevent duplicate initialization
   sidebarInitialized = true;
 
+  const sidebarEl = document.getElementById("app-sidebar");
   const toggleBtn = document.getElementById("sidebar-toggle-btn");
   const mobileToggleBtn = document.getElementById("mobile-sidebar-toggle-btn");
   const backdrop = document.getElementById("sidebar-backdrop");
@@ -92,9 +95,29 @@ export function initSidebar() {
     document.body.classList.add("sidebar-collapsed");
   }
 
-  // Desktop sidebar collapse/expand toggle
+  // Desktop smooth hover expand / collapse with debounce delay
+  if (sidebarEl) {
+    sidebarEl.addEventListener("mouseenter", () => {
+      if (window.innerWidth > 992 && document.body.classList.contains("sidebar-collapsed")) {
+        clearTimeout(collapseTimer);
+        document.body.classList.add("sidebar-hover-expanded");
+      }
+    });
+
+    sidebarEl.addEventListener("mouseleave", () => {
+      if (window.innerWidth > 992 && document.body.classList.contains("sidebar-collapsed")) {
+        clearTimeout(collapseTimer);
+        collapseTimer = setTimeout(() => {
+          document.body.classList.remove("sidebar-hover-expanded");
+        }, 220);
+      }
+    });
+  }
+
+  // Desktop sidebar explicit toggle button
   if (toggleBtn) {
     toggleBtn.addEventListener("click", () => {
+      document.body.classList.remove("sidebar-hover-expanded");
       document.body.classList.toggle("sidebar-collapsed");
       const collapsedNow = document.body.classList.contains("sidebar-collapsed");
       localStorage.setItem("nxtmov_sidebar_collapsed", collapsedNow ? "true" : "false");
@@ -150,8 +173,8 @@ export function renderSidebarNav() {
 
     group.items.forEach(item => {
       html += `
-        <a href="#${item.path}" class="sidebar-nav-link" data-path="${item.path}">
-          <span class="sidebar-icon">${item.icon}</span>
+        <a href="#${item.path}" class="sidebar-nav-link" data-path="${item.path}" title="${item.label}" data-tooltip="${item.label}">
+          <span class="sidebar-icon">${getIcon(item.icon, "sidebar-svg-icon", 18)}</span>
           <span class="sidebar-label">${item.label}</span>
         </a>
       `;
@@ -205,7 +228,7 @@ export function updateSidebarActiveRoute(currentPath) {
 /* ================================================================
    Bottom User Profile Card
    ================================================================ */
-function renderSidebarUserProfile() {
+export function renderSidebarUserProfile() {
   const state = store.getState();
   const user = state.user;
   const role = getUserRole();
@@ -218,13 +241,18 @@ function renderSidebarUserProfile() {
     if (nameEl) nameEl.textContent = user.full_name || user.email;
     if (roleEl) roleEl.textContent = role;
     if (avatarEl) {
-      const initials = (user.full_name || user.email)
-        .split(" ")
-        .map(n => n[0])
-        .join("")
-        .toUpperCase()
-        .slice(0, 2);
-      avatarEl.textContent = initials;
+      const avatarUrl = user.avatar_url || state.profile?.avatar_url;
+      if (avatarUrl) {
+        avatarEl.innerHTML = `<img src="${avatarUrl}" alt="${user.full_name || 'User'}" class="user-avatar-img" />`;
+      } else {
+        const initials = (user.full_name || user.email)
+          .split(" ")
+          .map(n => n[0])
+          .join("")
+          .toUpperCase()
+          .slice(0, 2);
+        avatarEl.textContent = initials;
+      }
     }
   }
 }

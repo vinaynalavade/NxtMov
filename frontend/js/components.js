@@ -1,4 +1,5 @@
 import { normalizeErrorMessage } from "./api.js";
+import { getIcon } from "./icons.js";
 
 /* ================================================================
    TOAST NOTIFICATIONS — Single source of truth
@@ -31,8 +32,13 @@ export function showToast(message, type = "success") {
   const toast = document.createElement("div");
   toast.className = `toast toast-${type}`;
   toast.dataset.msg = cleanMessage;
+
+  const iconName = type === "success" ? "check-circle" : type === "danger" ? "alert-circle" : type === "warning" ? "alert" : "info";
   toast.innerHTML = `
-    <span>${cleanMessage}</span>
+    <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1;">
+      <span class="toast-icon">${getIcon(iconName, "", 16)}</span>
+      <span style="font-size: 0.85rem; font-weight: 500;">${cleanMessage}</span>
+    </div>
     <button class="toast-close" aria-label="Dismiss">&times;</button>
   `;
 
@@ -65,8 +71,8 @@ export function createModal(title, htmlContent) {
   modalOverlay.innerHTML = `
     <div class="modal-card">
       <div class="modal-header">
-        <h3>${title}</h3>
-        <button class="modal-close" aria-label="Close">&times;</button>
+        <h3 style="margin: 0; font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">${title}</h3>
+        <button class="modal-close" aria-label="Close" style="background: none; border: none; font-size: 1.25rem; cursor: pointer; color: var(--text-muted);">&times;</button>
       </div>
       <div class="modal-body">
         ${htmlContent}
@@ -78,25 +84,20 @@ export function createModal(title, htmlContent) {
 
   const closeModal = () => {
     modalOverlay.style.display = "none";
-    // Cleanup after animation
     setTimeout(() => modalOverlay.remove(), 100);
   };
 
-  // Close on X button
   const closeBtn = modalOverlay.querySelector(".modal-close");
   if (closeBtn) closeBtn.addEventListener("click", closeModal);
 
-  // Close on any .close-modal-btn
   modalOverlay.querySelectorAll(".close-modal-btn").forEach((btn) => {
     btn.addEventListener("click", closeModal);
   });
 
-  // Close on overlay backdrop click
   modalOverlay.addEventListener("click", (e) => {
     if (e.target === modalOverlay) closeModal();
   });
 
-  // Close on Escape key
   const escHandler = (e) => {
     if (e.key === "Escape") {
       closeModal();
@@ -173,7 +174,6 @@ export function formatBadge(status) {
    CRM SIDE DRAWER
    ================================================================ */
 export function openDrawer(title, htmlContent) {
-  // Clean up any existing drawer
   const existingDrawer = document.getElementById("drawer-overlay");
   if (existingDrawer) existingDrawer.remove();
 
@@ -185,8 +185,8 @@ export function openDrawer(title, htmlContent) {
   drawerOverlay.innerHTML = `
     <div class="drawer-card">
       <div class="drawer-header">
-        <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary);">${title}</h3>
-        <button class="drawer-close btn-icon" aria-label="Close Drawer" style="border: none; font-size: 1.25rem;">&times;</button>
+        <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin: 0;">${title}</h3>
+        <button class="drawer-close btn-icon" aria-label="Close Drawer" style="border: none; font-size: 1.25rem; cursor: pointer;">&times;</button>
       </div>
       <div class="drawer-body">
         ${htmlContent}
@@ -194,7 +194,6 @@ export function openDrawer(title, htmlContent) {
     </div>
   `;
 
-  // Show with animation (next frame to trigger CSS transition)
   drawerOverlay.style.display = "flex";
   requestAnimationFrame(() => {
     drawerOverlay.classList.add("active");
@@ -214,7 +213,6 @@ export function openDrawer(title, htmlContent) {
     if (e.target === drawerOverlay) closeDrawer();
   });
 
-  // Close on Escape key
   const escHandler = (e) => {
     if (e.key === "Escape") {
       closeDrawer();
@@ -272,7 +270,7 @@ export function initPasswordToggle(container = document) {
     toggleBtn.setAttribute("aria-label", "Show password");
     toggleBtn.title = "Show password";
     toggleBtn.tabIndex = 0;
-    toggleBtn.innerHTML = "👁️";
+    toggleBtn.innerHTML = getIcon("eye", "", 16);
 
     toggleBtn.addEventListener("click", (e) => {
       e.preventDefault();
@@ -281,7 +279,7 @@ export function initPasswordToggle(container = document) {
       const isPassword = input.type === "password";
       input.type = isPassword ? "text" : "password";
 
-      toggleBtn.innerHTML = isPassword ? "🙈" : "👁️";
+      toggleBtn.innerHTML = isPassword ? getIcon("eye-off", "", 16) : getIcon("eye", "", 16);
       const label = isPassword ? "Hide password" : "Show password";
       toggleBtn.setAttribute("aria-label", label);
       toggleBtn.title = label;
@@ -292,4 +290,133 @@ export function initPasswordToggle(container = document) {
       parent.appendChild(toggleBtn);
     }
   });
+}
+
+/* ================================================================
+   PASSWORD STRENGTH EVALUATOR & LIVE METER
+   ================================================================ */
+export function evaluatePasswordStrength(password) {
+  const pwd = password || "";
+  const requirements = {
+    length: pwd.length >= 8,
+    uppercase: /[A-Z]/.test(pwd),
+    lowercase: /[a-z]/.test(pwd),
+    number: /[0-9]/.test(pwd),
+    special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(pwd)
+  };
+
+  let validCount = Object.values(requirements).filter(Boolean).length;
+  if (pwd.length === 0) validCount = 0;
+
+  let label = "Very Weak";
+  let color = "var(--danger-color)";
+  let percent = 10;
+
+  if (validCount >= 5 && pwd.length >= 10) {
+    label = "Strong";
+    color = "var(--success-color)";
+    percent = 100;
+  } else if (validCount >= 4) {
+    label = "Good";
+    color = "var(--accent-color)";
+    percent = 80;
+  } else if (validCount >= 3) {
+    label = "Fair";
+    color = "var(--warning-color)";
+    percent = 60;
+  } else if (validCount >= 2) {
+    label = "Weak";
+    color = "var(--danger-color)";
+    percent = 35;
+  } else {
+    label = "Very Weak";
+    color = "var(--danger-color)";
+    percent = 15;
+  }
+
+  return { validCount, label, color, percent, requirements };
+}
+
+export function initPasswordStrengthIndicator(inputEl, containerEl) {
+  if (!inputEl || !containerEl) return;
+
+  const updateView = () => {
+    const pwd = inputEl.value || "";
+    if (!pwd) {
+      containerEl.style.display = "none";
+      return;
+    }
+    containerEl.style.display = "block";
+
+    const { label, color, percent, requirements } = evaluatePasswordStrength(pwd);
+
+    const renderReq = (met, text) => `
+      <div style="display: flex; align-items: center; gap: 0.35rem; color: ${met ? 'var(--success-color)' : 'var(--text-muted)'};">
+        ${getIcon(met ? "check" : "close", "", 12)}
+        <span>${text}</span>
+      </div>
+    `;
+
+    containerEl.innerHTML = `
+      <div style="margin-top: 0.5rem; font-size: 0.775rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+          <span style="color: var(--text-secondary);">Strength:</span>
+          <strong style="color: ${color};">${label}</strong>
+        </div>
+        <div style="height: 5px; background: var(--border-color); border-radius: 3px; overflow: hidden; margin-bottom: 0.6rem;">
+          <div style="width: ${percent}%; height: 100%; background: ${color}; transition: width 200ms ease, background 200ms ease;"></div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem 0.5rem; font-size: 0.725rem;">
+          ${renderReq(requirements.length, "At least 8 characters")}
+          ${renderReq(requirements.uppercase, "Uppercase letter")}
+          ${renderReq(requirements.lowercase, "Lowercase letter")}
+          ${renderReq(requirements.number, "Number")}
+          ${renderReq(requirements.special, "Special character")}
+        </div>
+      </div>
+    `;
+  };
+
+  inputEl.addEventListener("input", updateView);
+  inputEl.addEventListener("focus", updateView);
+}
+
+/* ================================================================
+   FIELD VALIDATION UTILITIES
+   ================================================================ */
+export function validateFullName(name) {
+  if (!name || typeof name !== "string") return false;
+  const trimmed = name.trim();
+  if (trimmed.length < 2 || trimmed.length > 80) return false;
+  // Reject digits, emails, URLs, or garbage characters
+  if (/[0-9]/.test(trimmed) || /@/.test(trimmed) || /https?:\/\//i.test(trimmed)) return false;
+  // Allow Unicode letters, spaces, hyphens, and apostrophes
+  return /^[\p{L}\s'-]+$/u.test(trimmed);
+}
+
+export function validateEmail(email) {
+  if (!email || typeof email !== "string") return false;
+  const clean = email.trim().toLowerCase();
+  // Support demo account
+  if (clean === "demo@nxtmov.local") return true;
+  // Standard RFC regex
+  return /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(clean);
+}
+
+export function validatePhone(phone) {
+  if (!phone || typeof phone !== "string") return false;
+  const clean = phone.trim();
+  const digits = clean.replace(/\D/g, "");
+  return digits.length >= 7 && digits.length <= 16;
+}
+
+export function validateUrl(url) {
+  if (!url || typeof url !== "string") return false;
+  const trimmed = url.trim();
+  try {
+    const parsed = new URL(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
 }

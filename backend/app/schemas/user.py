@@ -5,6 +5,7 @@ class UserBase(BaseModel):
     email: str
     full_name: str
     phone: Optional[str] = None
+    avatar_url: Optional[str] = None
 
 class UserCreate(UserBase):
     password: str
@@ -17,6 +18,8 @@ class UserResponse(UserBase):
     id: int
     is_active: bool
     is_superuser: bool
+    is_email_verified: bool = False
+    is_phone_verified: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -26,7 +29,29 @@ class Token(BaseModel):
     active_org_id: int
     user: UserResponse
 
+    model_config = ConfigDict(from_attributes=True)
+
 class TokenPayload(BaseModel):
     sub: Optional[int] = None
     org_id: Optional[int] = None
     role: Optional[str] = None
+
+class EmailVerifyRequest(BaseModel):
+    email: Optional[str] = None
+
+class EmailVerifyConfirm(BaseModel):
+    token: str
+
+class PhoneOTPRequest(BaseModel):
+    phone: str
+
+class PhoneOTPConfirm(BaseModel):
+    phone: str
+    otp: str
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str

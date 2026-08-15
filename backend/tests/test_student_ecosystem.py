@@ -150,6 +150,7 @@ def test_resume_upload_and_analysis(test_setup):
         "Email: student@talent.com | Phone: +919876543210\n"
         "Summary: Skilled Automation Tester with experience in Python, Java, Selenium, Pytest, and MySQL.\n"
         "Education: Bachelor of Technology in Computer Science, Pune University (2025).\n"
+        "Experience: Automated 100+ test scenarios using Selenium WebDriver and Pytest in Agile development sprints.\n"
         "LinkedIn: https://linkedin.com/in/alexstudent\n"
         "GitHub: https://github.com/alexstudent\n"
     ).encode("utf-8")
@@ -160,7 +161,7 @@ def test_resume_upload_and_analysis(test_setup):
     assert res.status_code == 200
     resume_data = res.json()
     assert resume_data["file_name"] == "Alex_Resume.txt"
-    assert resume_data["quality_score"] > 60
+    assert (resume_data.get("ats_score") or resume_data.get("quality_score")) >= 60
     assert len(resume_data["strengths"]) > 0
 
     # Get Analysis

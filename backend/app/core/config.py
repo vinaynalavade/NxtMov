@@ -44,3 +44,14 @@ class Settings(BaseSettings):
     )
 
 settings = Settings()
+
+# Unified Storage Architecture
+APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STATIC_UPLOADS_DIR = os.path.join(APP_DIR, "static_uploads")
+AVATAR_STORAGE_DIR = os.path.join(STATIC_UPLOADS_DIR, "avatars")
+RESUME_STORAGE_DIR = os.path.join(STATIC_UPLOADS_DIR, "resumes")
+
+def init_storage_directories():
+    os.makedirs(STATIC_UPLOADS_DIR, exist_ok=True)
+    os.makedirs(AVATAR_STORAGE_DIR, exist_ok=True)
+    os.makedirs(RESUME_STORAGE_DIR, exist_ok=True)

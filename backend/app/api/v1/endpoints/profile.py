@@ -3,6 +3,7 @@ import os
 import uuid
 from typing import Dict, Any, Optional, Tuple
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.tenant import get_current_tenant, TenantContext
@@ -13,10 +14,10 @@ from app.models.student_profile import StudentProfile
 from app.schemas.student_profile import StudentProfileUpdate, StudentProfileResponse, AccountSettingsUpdate
 from app.services.resume_service import calculate_profile_completeness
 
-router = APIRouter()
+from app.core.config import STATIC_UPLOADS_DIR, AVATAR_STORAGE_DIR, init_storage_directories
 
-AVATAR_TMP_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "static_uploads", "avatars")
-os.makedirs(AVATAR_TMP_DIR, exist_ok=True)
+router = APIRouter()
+init_storage_directories()
 
 def get_or_create_student_profile(db: Session, ctx: TenantContext) -> Tuple[Candidate, StudentProfile]:
     user = ctx.user
@@ -67,8 +68,6 @@ def get_or_create_student_profile(db: Session, ctx: TenantContext) -> Tuple[Cand
 
     return candidate, profile
 
-from typing import Tuple
-
 @router.get("", response_model=StudentProfileResponse, summary="Get Current Student Talent Profile")
 def get_profile(
     ctx: TenantContext = Depends(get_current_tenant),
@@ -117,7 +116,8 @@ def get_profile(
         email_notifications_enabled=profile.email_notifications_enabled,
         job_alerts_enabled=profile.job_alerts_enabled,
         completeness_score=comp_res["completeness_score"],
-        missing_items=comp_res["missing_items"]
+        is_email_verified=ctx.user.is_email_verified,
+        is_phone_verified=ctx.user.is_phone_verified
     )
 
 @router.put("", response_model=StudentProfileResponse, summary="Update Student Talent Profile")
@@ -199,13 +199,75 @@ async def upload_avatar(
     if len(content) > 5 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Avatar image size exceeds 5MB limit.")
 
+    # Clean up old avatar file for this user if exists
+    for existing_file in os.listdir(AVATAR_STORAGE_DIR):
+        if existing_file.startswith(f"avatar_{ctx.user.id}_"):
+            try:
+                os.remove(os.path.join(AVATAR_STORAGE_DIR, existing_file))
+            except Exception:
+                pass
+
     file_name = f"avatar_{ctx.user.id}_{uuid.uuid4().hex[:8]}{ext}"
-    saved_path = os.path.join(AVATAR_TMP_DIR, file_name)
+    saved_path = os.path.join(AVATAR_STORAGE_DIR, file_name)
     with open(saved_path, "wb") as f:
         f.write(content)
 
-    avatar_url = f"/static/avatars/{file_name}"
+    avatar_url = f"/api/v1/profile/avatar/file?v={uuid.uuid4().hex[:6]}"
     profile.avatar_url = avatar_url
+
+    comp_res = calculate_profile_completeness(candidate, profile)
+    profile.completeness_score = comp_res["completeness_score"]
+
     db.commit()
 
     return {"avatar_url": avatar_url, "message": "Profile picture updated successfully."}
+
+@router.delete("/avatar", summary="Remove Profile Picture Avatar")
+def remove_avatar(
+    ctx: TenantContext = Depends(get_current_tenant),
+    db: Session = Depends(get_db)
+):
+    candidate, profile = get_or_create_student_profile(db, ctx)
+
+    # Remove avatar files
+    for existing_file in os.listdir(AVATAR_STORAGE_DIR):
+        if existing_file.startswith(f"avatar_{ctx.user.id}_"):
+            try:
+                os.remove(os.path.join(AVATAR_STORAGE_DIR, existing_file))
+            except Exception:
+                pass
+
+    profile.avatar_url = None
+    comp_res = calculate_profile_completeness(candidate, profile)
+    profile.completeness_score = comp_res["completeness_score"]
+
+    db.commit()
+
+    return {"message": "Profile picture removed successfully."}
+
+@router.get("/avatar/file", summary="Stream Authenticated User Avatar")
+def get_avatar_file(
+    ctx: TenantContext = Depends(get_current_tenant),
+    db: Session = Depends(get_db)
+):
+    # Find matching avatar file for user
+    matched_file = None
+    if os.path.exists(AVATAR_STORAGE_DIR):
+        for fname in os.listdir(AVATAR_STORAGE_DIR):
+            if fname.startswith(f"avatar_{ctx.user.id}_"):
+                matched_file = os.path.join(AVATAR_STORAGE_DIR, fname)
+                break
+
+    if not matched_file or not os.path.exists(matched_file):
+        raise HTTPException(status_code=404, detail="No custom avatar image found.")
+
+    ext = os.path.splitext(matched_file)[1].lower()
+    media_type = "image/jpeg"
+    if ext == ".png":
+        media_type = "image/png"
+    elif ext == ".webp":
+        media_type = "image/webp"
+    elif ext == ".svg":
+        media_type = "image/svg+xml"
+
+    return FileResponse(matched_file, media_type=media_type)

@@ -1,21 +1,28 @@
 import { API } from "../api.js";
 import { store } from "../store.js";
-import { showToast, initPasswordToggle } from "../components.js";
+import {
+  showToast,
+  initPasswordToggle,
+  initPasswordStrengthIndicator,
+  validateFullName,
+  validateEmail
+} from "../components.js";
+import { getIcon } from "../icons.js";
 
 export function renderLogin() {
   return `
     <div class="auth-card card" style="max-width: 440px; margin: 3rem auto;">
-      <h2 style="text-align: center; margin-bottom: 0.5rem;">Log in to NxtMov</h2>
+      <h2 style="text-align: center; margin-bottom: 0.5rem; color: var(--text-primary);">Log in to NxtMov</h2>
       <p style="text-align: center; color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 0.875rem;">
-        Enter your credentials to access your personal job-search workspace.
+        Enter your credentials to access your talent workspace.
       </p>
 
-      <!-- REMOVE BEFORE PRODUCTION DEPLOYMENT: Demo Mode Card Container -->
+      <!-- Demo Mode Card Container -->
       <div id="demo-credentials-container" style="margin-bottom: 1.25rem;">
         <div style="background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-left: 4px solid var(--warning-color); border-radius: var(--radius-md); padding: 1rem;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-            <span style="font-size: 0.75rem; font-weight: 700; color: var(--warning-color); letter-spacing: 0.5px;">
-              ⚡ DEVELOPMENT / DEMO MODE
+            <span style="font-size: 0.75rem; font-weight: 700; color: var(--warning-color); letter-spacing: 0.5px; display: flex; align-items: center; gap: 0.35rem;">
+              ${getIcon("sparkles", "", 14)} DEMO & EVALUATION MODE
             </span>
             <span class="badge-status badge-warning" style="font-size: 0.65rem;">DEV ONLY</span>
           </div>
@@ -25,13 +32,13 @@ export function renderLogin() {
             <div><strong>Password:</strong> <code id="demo-pass-text">NxtMov@123</code></div>
           </div>
 
-          <button type="button" id="use-demo-creds-btn" class="btn btn-outline" style="width: 100%; font-size: 0.8rem; padding: 0.35rem 0.6rem; color: var(--primary-color); border-color: var(--primary-color);">
-            ⚡ Use Demo Account
+          <button type="button" id="use-demo-creds-btn" class="btn btn-outline" style="width: 100%; font-size: 0.8rem; padding: 0.35rem 0.6rem; color: var(--primary-color); border-color: var(--primary-color); gap: 0.35rem; justify-content: center;">
+            ${getIcon("user", "", 14)} Fill Demo Account Credentials
           </button>
         </div>
       </div>
 
-      <form id="login-form">
+      <form id="login-form" novalidate>
         <div class="form-group" style="margin-bottom: 1rem;">
           <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 500;">Email Address</label>
           <input type="email" id="login-email" required placeholder="you@example.com" class="form-input" style="width: 100%;">
@@ -42,11 +49,13 @@ export function renderLogin() {
           <input type="password" id="login-password" required placeholder="••••••••" class="form-input" style="width: 100%;">
         </div>
 
-        <button type="submit" class="btn btn-primary" style="width: 100%;">Log In</button>
+        <button type="submit" id="login-submit-btn" class="btn btn-primary" style="width: 100%; justify-content: center; gap: 0.5rem;">
+          Log In
+        </button>
       </form>
 
       <p style="text-align: center; margin-top: 1.5rem; font-size: 0.875rem; color: var(--text-secondary);">
-        Don't have an account? <a href="#/register" style="color: var(--primary-color);">Create Workspace</a>
+        Don't have an account? <a href="#/register" style="color: var(--primary-color); font-weight: 600;">Create Workspace</a>
       </p>
     </div>
   `;
@@ -56,32 +65,63 @@ export function initLoginListeners() {
   const form = document.getElementById("login-form");
   if (!form) return;
 
+  const emailInput = document.getElementById("login-email");
+  const passwordInput = document.getElementById("login-password");
+  const submitBtn = document.getElementById("login-submit-btn");
+
   // Attach password visibility eye toggle
   initPasswordToggle(form);
 
-  // Attach Use Demo Account button handler immediately
+  // Attach Use Demo Account button handler
   const demoBtn = document.getElementById("use-demo-creds-btn");
   if (demoBtn) {
     demoBtn.onclick = (e) => {
       e.preventDefault();
       const emailText = document.getElementById("demo-email-text")?.textContent || "demo@nxtmov.local";
       const passText = document.getElementById("demo-pass-text")?.textContent || "NxtMov@123";
-      
-      const emailInput = document.getElementById("login-email");
-      const passwordInput = document.getElementById("login-password");
+
       if (emailInput) emailInput.value = emailText;
       if (passwordInput) passwordInput.value = passText;
       showToast("Demo credentials filled into login form.");
+      submitBtn?.focus();
     };
   }
 
   // Check backend auth config asynchronously
   loadDemoModeConfig();
 
+  let isSubmitting = false;
+
   form.onsubmit = async (e) => {
     e.preventDefault();
-    const email = document.getElementById("login-email").value.trim();
-    const password = document.getElementById("login-password").value;
+    if (isSubmitting) return;
+
+    const email = (emailInput?.value || "").trim();
+    const password = passwordInput?.value || "";
+
+    // Input validations
+    if (!email) {
+      showToast("Please enter your email address.", "danger");
+      emailInput?.focus();
+      return;
+    }
+    if (!password) {
+      showToast("Please enter your password.", "danger");
+      passwordInput?.focus();
+      return;
+    }
+    if (!validateEmail(email)) {
+      showToast("Please enter a valid email address and password.", "danger");
+      emailInput?.focus();
+      return;
+    }
+
+    // Set loading state & disable submission
+    isSubmitting = true;
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `${getIcon("spinner", "icon-spin", 16)} Signing in...`;
+    }
 
     const formData = new FormData();
     formData.append("username", email);
@@ -91,17 +131,25 @@ export function initLoginListeners() {
       const data = await API.post("/auth/login", formData, false);
       API.setToken(data.access_token);
       store.setState({ user: data.user, activeOrgId: data.active_org_id });
-      showToast(`Welcome back, ${data.user.full_name}!`);
+      showToast("Login successful. Welcome back!", "success");
       window.location.hash = "#/dashboard";
     } catch (err) {
       showToast(err.message, "danger");
+      if (passwordInput) {
+        passwordInput.focus();
+      }
+    } finally {
+      isSubmitting = false;
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = "Log In";
+      }
     }
   };
 }
 
 /**
- * REMOVE BEFORE PRODUCTION DEPLOYMENT
- * Checks development demo configuration on backend. If demo_mode is disabled, hides Demo Card.
+ * Checks public authentication configuration on backend. If demo_mode is disabled, hides Demo Card.
  */
 async function loadDemoModeConfig() {
   const container = document.getElementById("demo-credentials-container");
@@ -118,39 +166,42 @@ async function loadDemoModeConfig() {
       if (passElem && config.demo_password) passElem.textContent = config.demo_password;
     }
   } catch (err) {
-    console.warn("Auth config check error:", err);
+    // Non-critical fallback for local dev
   }
 }
 
 export function renderRegister() {
   return `
     <div class="auth-card card" style="max-width: 450px; margin: 2rem auto;">
-      <h2 style="text-align: center; margin-bottom: 0.5rem;">Create NxtMov Account</h2>
+      <h2 style="text-align: center; margin-bottom: 0.5rem; color: var(--text-primary);">Create NxtMov Account</h2>
       <p style="text-align: center; color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 0.875rem;">
-        Get your personal job-search workspace in seconds.
+        Get your personal career and talent workspace in seconds.
       </p>
 
-      <form id="register-form">
+      <form id="register-form" novalidate>
         <div class="form-group" style="margin-bottom: 1rem;">
-          <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 500;">Full Name</label>
-          <input type="text" id="reg-name" required placeholder="Vinay Sharma" class="form-input" style="width: 100%;">
+          <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 500;">Full Name *</label>
+          <input type="text" id="reg-name" required placeholder="Vinay Nalavade" class="form-input" style="width: 100%;">
         </div>
 
         <div class="form-group" style="margin-bottom: 1rem;">
-          <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 500;">Email Address</label>
+          <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 500;">Email Address *</label>
           <input type="email" id="reg-email" required placeholder="vinay@example.com" class="form-input" style="width: 100%;">
         </div>
 
         <div class="form-group" style="margin-bottom: 1.5rem;">
-          <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 500;">Password</label>
+          <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 500;">Password *</label>
           <input type="password" id="reg-password" required minlength="8" placeholder="••••••••" class="form-input" style="width: 100%;">
+          <div id="reg-password-strength-container" style="display: none; margin-top: 0.5rem;"></div>
         </div>
 
-        <button type="submit" class="btn btn-primary" style="width: 100%;">Provision Workspace</button>
+        <button type="submit" id="reg-submit-btn" class="btn btn-primary" style="width: 100%; justify-content: center; gap: 0.5rem;">
+          Create Account & Workspace
+        </button>
       </form>
 
       <p style="text-align: center; margin-top: 1.5rem; font-size: 0.875rem; color: var(--text-secondary);">
-        Already registered? <a href="#/login" style="color: var(--primary-color);">Log In</a>
+        Already registered? <a href="#/login" style="color: var(--primary-color); font-weight: 600;">Log In</a>
       </p>
     </div>
   `;
@@ -160,23 +211,72 @@ export function initRegisterListeners() {
   const form = document.getElementById("register-form");
   if (!form) return;
 
+  const nameInput = document.getElementById("reg-name");
+  const emailInput = document.getElementById("reg-email");
+  const passwordInput = document.getElementById("reg-password");
+  const strengthContainer = document.getElementById("reg-password-strength-container");
+  const submitBtn = document.getElementById("reg-submit-btn");
+
   // Attach password visibility eye toggle
   initPasswordToggle(form);
 
+  // Attach live password strength indicator
+  if (passwordInput && strengthContainer) {
+    initPasswordStrengthIndicator(passwordInput, strengthContainer);
+  }
+
+  let isSubmitting = false;
+
   form.onsubmit = async (e) => {
     e.preventDefault();
-    const full_name = document.getElementById("reg-name").value.trim();
-    const email = document.getElementById("reg-email").value.trim();
-    const password = document.getElementById("reg-password").value;
+    if (isSubmitting) return;
+
+    const full_name = (nameInput?.value || "").trim();
+    const email = (emailInput?.value || "").trim();
+    const password = passwordInput?.value || "";
+
+    // Input validations
+    if (!full_name || !email || !password) {
+      showToast("Please complete all required fields.", "danger");
+      return;
+    }
+    if (!validateFullName(full_name)) {
+      showToast("Please enter a valid full name (letters, spaces, and hyphens only).", "danger");
+      nameInput?.focus();
+      return;
+    }
+    if (!validateEmail(email)) {
+      showToast("Please enter a valid email address.", "danger");
+      emailInput?.focus();
+      return;
+    }
+    if (password.length < 6) {
+      showToast("Password does not meet the required security requirements.", "danger");
+      passwordInput?.focus();
+      return;
+    }
+
+    // Set loading state & disable submission
+    isSubmitting = true;
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `${getIcon("spinner", "icon-spin", 16)} Provisioning Workspace...`;
+    }
 
     try {
       const data = await API.post("/auth/register", { full_name, email, password });
       API.setToken(data.access_token);
       store.setState({ user: data.user, activeOrgId: data.active_org_id });
-      showToast("Personal workspace provisioned successfully!");
+      showToast("Account created successfully. Welcome to NxtMov!", "success");
       window.location.hash = "#/dashboard";
     } catch (err) {
       showToast(err.message, "danger");
+    } finally {
+      isSubmitting = false;
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = "Create Account & Workspace";
+      }
     }
   };
 }

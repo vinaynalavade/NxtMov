@@ -24,6 +24,36 @@ export const getApiBase = () => {
 export const API_BASE = getApiBase();
 
 /**
+ * Resolves a backend-relative path to a complete, accessible URL in both local and cloud environments.
+ */
+export function getBackendUrl(relativeOrAbsoluteUrl) {
+    if (!relativeOrAbsoluteUrl) return "";
+    if (relativeOrAbsoluteUrl.startsWith("http://") || relativeOrAbsoluteUrl.startsWith("https://")) {
+        return relativeOrAbsoluteUrl;
+    }
+    const base = getApiBase();
+    const root = base.replace(/\/api\/v1\/?$/, "");
+    if (relativeOrAbsoluteUrl.startsWith("/api/v1")) {
+        return `${root}${relativeOrAbsoluteUrl}`;
+    }
+    if (relativeOrAbsoluteUrl.startsWith("/")) {
+        return `${root}${relativeOrAbsoluteUrl}`;
+    }
+    return `${base}/${relativeOrAbsoluteUrl}`;
+}
+
+/**
+ * Resolves an authenticated file URL with embedded token query parameter for direct browser tab display.
+ */
+export function getAuthenticatedFileUrl(relativeOrAbsoluteUrl) {
+    const fullUrl = getBackendUrl(relativeOrAbsoluteUrl);
+    const token = API.getToken();
+    if (!token) return fullUrl;
+    const separator = fullUrl.includes("?") ? "&" : "?";
+    return `${fullUrl}${separator}token=${encodeURIComponent(token)}`;
+}
+
+/**
  * Normalizes any error object, array, or string into a clean, human-readable string.
  * Prevents generic '[object Object]' error toasts.
  */
@@ -96,6 +126,7 @@ export class API {
   static clearToken() {
     localStorage.removeItem("nxtmov_token");
     localStorage.removeItem("nxtmov_user");
+    localStorage.removeItem("nxtmov_active_org");
   }
 
   static getHeaders(isJson = true) {
@@ -128,14 +159,23 @@ export class API {
       }
     }
 
+    const isLoginEndpoint = endpoint === "/auth/login";
+    const isRegisterEndpoint = endpoint === "/auth/register";
+    const isPublicAuthEndpoint = endpoint.startsWith("/auth/config") || isLoginEndpoint || isRegisterEndpoint;
+
     try {
       const response = await fetch(url, config);
-      if (response.status === 401) {
+
+      // Handle 401 for authenticated session expiration on PROTECTED endpoints only
+      if (response.status === 401 && !isPublicAuthEndpoint) {
+        const hadToken = Boolean(this.getToken());
         this.clearToken();
         if (window.location.hash !== "#/login") {
           window.location.hash = "#/login";
         }
-        throw new Error("Your session has expired. Please log in again.");
+        if (hadToken) {
+          throw new Error("Your session has expired. Please log in again.");
+        }
       }
       
       if (response.status === 204) {
@@ -151,26 +191,53 @@ export class API {
 
       if (!response.ok) {
         let errorMsg = normalizeErrorMessage(data?.detail || data);
+
         if (response.status === 401) {
-          errorMsg = "Your session has expired. Please log in again.";
-        } else if (response.status === 403) {
-          errorMsg = "You do not have permission to perform this action.";
-        } else if (response.status === 413) {
-          errorMsg = "Resume file is too large.";
-        } else if (response.status === 415) {
-          errorMsg = "Unsupported resume format. Upload PDF, DOCX, or TXT.";
-        } else if (response.status === 500 && (!data || !data.detail)) {
-          errorMsg = "Resume analysis failed on the server. Check the backend logs.";
+          if (isLoginEndpoint) {
+            const rawDetail = (typeof data?.detail === "string" ? data.detail : errorMsg).toLowerCase();
+            if (rawDetail.includes("password")) {
+              errorMsg = "Incorrect password. Please try again.";
+            } else if (rawDetail.includes("no account") || rawDetail.includes("not found") || rawDetail.includes("user")) {
+              errorMsg = "No account found with this email address.";
+            } else {
+              errorMsg = "Incorrect password. Please try again.";
+            }
+          } else {
+            errorMsg = "Your session has expired. Please log in again.";
+          }
+        } else if (response.status === 429) {
+          if (isLoginEndpoint) {
+            errorMsg = "Too many login attempts. Please wait a moment and try again.";
+          } else if (isRegisterEndpoint) {
+            errorMsg = "Too many signup attempts. Please wait a moment and try again.";
+          } else {
+            errorMsg = "Too many requests. Please wait a moment and try again.";
+          }
+        } else if (response.status === 400 && isRegisterEndpoint) {
+          const rawDetail = (typeof data?.detail === "string" ? data.detail : errorMsg).toLowerCase();
+          if (rawDetail.includes("exists") || rawDetail.includes("already")) {
+            errorMsg = "An account with this email already exists.";
+          } else if (rawDetail.includes("email")) {
+            errorMsg = "Please enter a valid email address.";
+          } else if (rawDetail.includes("password")) {
+            errorMsg = "Password does not meet the required security requirements.";
+          }
+        } else if (response.status >= 500) {
+          if (isLoginEndpoint) {
+            errorMsg = "Something went wrong while signing you in. Please try again.";
+          } else if (isRegisterEndpoint) {
+            errorMsg = "Something went wrong while creating your account. Please try again.";
+          } else {
+            errorMsg = "Something went wrong on the server. Please try again.";
+          }
         }
+
         throw new Error(errorMsg || `HTTP ${response.status}: Request failed.`);
       }
       return data;
     } catch (error) {
-      console.error(`API Error [${options.method || 'GET'} ${endpoint}]:`, error);
       if (error instanceof TypeError && (error.message.includes("fetch") || error.message.includes("NetworkError") || error.message.includes("Failed to fetch"))) {
-        throw new Error(
-    "Unable to connect to NxtMov server. Please check that the backend is available."
-);
+        throw new Error("Unable to connect to NxtMov server. Please try again.");
       }
       throw error;
     }

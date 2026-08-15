@@ -30,11 +30,11 @@
     <!-- Single Authoritative Left Sidebar -->
     <aside id="app-sidebar" class="app-sidebar">
       <div class="sidebar-brand-header">
-        <a href="#/dashboard" class="sidebar-brand-logo">
-          ⚡ <span>NxtMov</span>
+        <a href="#/dashboard" class="sidebar-brand-logo" title="NxtMov Home">
+          <img src="./favicon.svg" alt="NxtMov" class="sidebar-brand-mark"> <span>NxtMov</span>
         </a>
         <button id="sidebar-toggle-btn" class="sidebar-toggle-btn" title="Toggle Sidebar" aria-label="Toggle Sidebar">
-          ☰
+          <svg class="ui-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
         </button>
       </div>
 
@@ -44,14 +44,18 @@
 
       <!-- Bottom User Profile Card -->
       <div id="sidebar-user-card" class="sidebar-user-card">
-        <div id="sidebar-user-avatar" class="sidebar-user-avatar">US</div>
+        <a href="#/profile" id="sidebar-user-avatar" class="sidebar-user-avatar" title="View Profile" style="text-decoration: none;">US</a>
         <div class="sidebar-user-info">
           <div id="sidebar-user-name" class="sidebar-user-name">User</div>
           <span id="sidebar-user-role" class="sidebar-user-role">STUDENT</span>
         </div>
         <div class="sidebar-user-actions">
-          <a href="#/profile?tab=tab-settings" class="btn-icon" title="Account Settings" style="text-decoration: none;">⚙️</a>
-          <button id="sidebar-logout-btn" class="btn-icon" title="Log Out" aria-label="Log Out">↪</button>
+          <a href="#/profile?tab=tab-settings" class="btn-icon" title="Account Settings" style="text-decoration: none;" aria-label="Account Settings">
+            <svg class="ui-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+          </a>
+          <button id="sidebar-logout-btn" class="btn-icon" title="Log Out" aria-label="Log Out">
+            <svg class="ui-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+          </button>
         </div>
       </div>
     </aside>
@@ -62,7 +66,7 @@
       <header class="top-header">
         <div class="top-header-left">
           <button id="mobile-sidebar-toggle-btn" class="sidebar-toggle-btn mobile-only" title="Open Menu" aria-label="Open Menu">
-            ☰
+            <svg class="ui-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
           </button>
           <div id="page-breadcrumb-title" class="page-breadcrumb-title">
             Dashboard
@@ -72,8 +76,8 @@
         <div class="top-header-right">
           <!-- Notification Bell -->
           <div id="notification-bell-container" style="position: relative; display: none;">
-            <button id="notif-bell-btn" class="btn-icon" title="Notifications" aria-label="Notifications" style="font-size: 1rem; position: relative; padding: 0.3rem 0.5rem;">
-              🔔
+            <button id="notif-bell-btn" class="btn-icon" title="Notifications" aria-label="Notifications" style="position: relative; padding: 0.4rem 0.55rem;">
+              <svg class="ui-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
               <span id="unread-notif-badge" class="badge-status badge-danger" style="display: none; position: absolute; top: -4px; right: -4px; font-size: 0.55rem; padding: 0.1rem 0.3rem; border-radius: 999px; min-width: 16px; text-align: center;">0</span>
             </button>
             <div id="notif-dropdown" class="notif-dropdown-menu">
@@ -87,15 +91,19 @@
           </div>
 
           <!-- Theme Toggle Button -->
-          <button id="theme-toggle-btn" class="btn-icon" title="Toggle Light / Dark Mode" aria-label="Toggle Theme" style="font-size: 0.85rem; padding: 0.3rem 0.5rem;">
-            <span id="theme-toggle-icon">☀️</span>
+          <button id="theme-toggle-btn" class="btn-icon" title="Toggle Light / Dark Mode" aria-label="Toggle Theme" style="padding: 0.4rem 0.55rem;">
+            <span id="theme-toggle-icon">
+              <svg class="ui-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+            </span>
           </button>
 
           <!-- Workspace Context Switcher -->
           <div id="user-profile-bar" class="workspace-controls" style="display: none;">
-            <select id="workspace-switcher" class="form-control" aria-label="Select Workspace">
-            </select>
-            <button id="create-consultancy-btn" class="btn btn-outline" title="Create a new recruitment consultancy workspace">+ Workspace</button>
+            <div id="workspace-mount"></div>
+            <button id="create-consultancy-btn" class="btn btn-outline btn-sm" title="Create a new workspace" style="font-size: 0.775rem; padding: 0.35rem 0.65rem; gap: 0.3rem;">
+              <svg class="ui-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              <span>Workspace</span>
+            </button>
           </div>
         </div>
       </header>

@@ -20,10 +20,14 @@ class Resume(Base, TimestampMixin):
     extracted_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_current: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
-    # Quality Assessment
+    # Quality Assessment & Career Domain
     quality_score: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    career_domain: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    likely_roles_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    domain_explanation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     strengths_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     improvements_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    warnings_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 class ResumeAnalysis(Base, TimestampMixin):
     __tablename__ = "resume_analyses"

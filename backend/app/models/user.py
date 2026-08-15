@@ -17,6 +17,11 @@ class User(Base, TimestampMixin):
     phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_email_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_phone_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    email_verification_token: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    phone_otp: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    password_reset_token: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     # Relationships
     owned_organizations: Mapped[List["Organization"]] = relationship("Organization", back_populates="owner", cascade="all, delete-orphan")
