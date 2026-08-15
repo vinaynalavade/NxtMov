@@ -232,16 +232,58 @@ export function initResumeEvents() {
 }
 
 async function uploadResumeFile(file) {
+  if (!file) return;
+
+  const validExts = [".pdf", ".docx", ".txt"];
+  const fileExt = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+  if (!validExts.includes(fileExt)) {
+    showToast("Please upload a PDF or DOCX resume.", "warning");
+    return;
+  }
+
+  if (file.size > 15 * 1024 * 1024) {
+    showToast("Resume file is too large. Please upload a smaller file.", "warning");
+    return;
+  }
+
+  if (file.size === 0) {
+    showToast("The uploaded resume appears to be invalid or empty.", "warning");
+    return;
+  }
+
+  const browseBtn = document.getElementById("resume-browse-btn");
+  const fileInput = document.getElementById("resume-file-input");
+  const dropZone = document.getElementById("resume-drop-zone");
+
+  const originalBtnHtml = browseBtn ? browseBtn.innerHTML : "Browse Resume File";
+  if (browseBtn) {
+    browseBtn.disabled = true;
+    browseBtn.innerHTML = `<span class="spinner" style="width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; display: inline-block; animation: spin 0.75s linear infinite; vertical-align: middle; margin-right: 0.5rem;"></span> Analyzing Resume...`;
+  }
+  if (dropZone) dropZone.style.pointerEvents = "none";
+  if (fileInput) fileInput.disabled = true;
+
   const formData = new FormData();
   formData.append("file", file);
 
   try {
-    showToast("Uploading & running ATS intelligence analysis...", "info");
+    showToast("Uploading your resume...", "info");
     const res = await api.post("/resumes/upload", formData, false);
-    showToast("Resume uploaded & analyzed successfully!");
+    showToast("Resume uploaded successfully.");
+    showToast("Resume analyzed successfully!");
     await loadResumeData(res.id);
   } catch (err) {
-    showToast(err.message || "Failed to upload resume.", "danger");
+    showToast(err.message || "Resume processing failed on the server. Please try again.", "danger");
+  } finally {
+    if (browseBtn) {
+      browseBtn.disabled = false;
+      browseBtn.innerHTML = originalBtnHtml;
+    }
+    if (dropZone) dropZone.style.pointerEvents = "auto";
+    if (fileInput) {
+      fileInput.disabled = false;
+      fileInput.value = "";
+    }
   }
 }
 

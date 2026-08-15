@@ -25,6 +25,39 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
+from fastapi import Request, HTTPException, status
+from fastapi.responses import JSONResponse
+
+# Global exception handlers ensuring CORS headers and clean JSON responses
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    headers = dict(getattr(exc, "headers", None) or {})
+    origin = request.headers.get("origin")
+    if origin:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=headers,
+    )
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    import traceback
+    print(f"[UNHANDLED SERVER ERROR] Path: {request.url.path}, Error: {exc}", flush=True)
+    traceback.print_exc()
+    origin = request.headers.get("origin")
+    headers = {}
+    if origin:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Resume processing failed on the server. Please try again."},
+        headers=headers,
+    )
+
 # Include API v1 router
 app.include_router(api_router, prefix=settings.API_V1_STR)
 

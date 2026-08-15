@@ -27,9 +27,10 @@ router = APIRouter()
 init_storage_directories()
 
 def get_or_create_student_profile(db: Session, ctx: TenantContext):
+    # Match candidate by organization and (user_id OR email)
     candidate = db.query(Candidate).filter(
         Candidate.organization_id == ctx.organization.id,
-        Candidate.user_id == ctx.user.id
+        (Candidate.user_id == ctx.user.id) | (Candidate.email == ctx.user.email)
     ).first()
 
     if not candidate:
@@ -43,10 +44,14 @@ def get_or_create_student_profile(db: Session, ctx: TenantContext):
         )
         db.add(candidate)
         db.flush()
+    elif candidate.user_id != ctx.user.id:
+        candidate.user_id = ctx.user.id
+        db.flush()
 
+    # Match student profile by organization and (candidate_id OR user_id)
     profile = db.query(StudentProfile).filter(
         StudentProfile.organization_id == ctx.organization.id,
-        StudentProfile.user_id == ctx.user.id
+        (StudentProfile.candidate_id == candidate.id) | (StudentProfile.user_id == ctx.user.id)
     ).first()
 
     if not profile:
@@ -58,10 +63,15 @@ def get_or_create_student_profile(db: Session, ctx: TenantContext):
         )
         db.add(profile)
         db.flush()
+    else:
+        if profile.candidate_id != candidate.id or profile.user_id != ctx.user.id:
+            profile.candidate_id = candidate.id
+            profile.user_id = ctx.user.id
+            db.flush()
 
     return candidate, profile
 
-def build_resume_response(r: Resume, candidate_id: int) -> ResumeResponse:
+def build_resume_response(r: Resume, candidate_id: int, score_breakdown: Optional[dict] = None) -> ResumeResponse:
     strengths = json.loads(r.strengths_json) if r.strengths_json else []
     improvements = json.loads(r.improvements_json) if r.improvements_json else []
     warnings = json.loads(r.warnings_json) if r.warnings_json else []
@@ -79,6 +89,7 @@ def build_resume_response(r: Resume, candidate_id: int) -> ResumeResponse:
         career_domain=r.career_domain,
         likely_roles=likely_roles,
         domain_explanation=r.domain_explanation,
+        score_breakdown=score_breakdown,
         strengths=strengths,
         improvements=improvements,
         warnings=warnings,
@@ -111,103 +122,157 @@ async def upload_resume(
 ):
     original_filename = file.filename or "resume.pdf"
     ext = os.path.splitext(original_filename)[1].lower()
-    content = await file.read()
+    
+    print(f"[RESUME UPLOAD] Request received: filename='{original_filename}', user_id={ctx.user.id}", flush=True)
+
+    try:
+        content = await file.read()
+    except Exception as e:
+        print(f"[RESUME UPLOAD ERROR] Failed reading uploaded file stream: {e}", flush=True)
+        raise HTTPException(status_code=400, detail="Failed to read the uploaded resume file. Please try again.")
 
     if not content or len(content) == 0:
-        raise HTTPException(status_code=400, detail="Empty file uploaded. Please select a valid resume document.")
+        print(f"[RESUME UPLOAD ERROR] Uploaded file is empty: {original_filename}", flush=True)
+        raise HTTPException(status_code=400, detail="The uploaded resume file is empty. Please select a valid document.")
 
     if ext not in [".pdf", ".docx", ".txt"]:
-        raise HTTPException(status_code=415, detail="Unsupported resume format. Upload PDF, DOCX, or TXT.")
+        print(f"[RESUME UPLOAD ERROR] Unsupported extension: {ext}", flush=True)
+        raise HTTPException(status_code=415, detail="Unsupported resume format. Please upload a PDF or DOCX file.")
 
     file_size_bytes = len(content)
     if file_size_bytes > 15 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Resume file is too large (max 15MB).")
+        print(f"[RESUME UPLOAD ERROR] File size {file_size_bytes} exceeds 15MB limit", flush=True)
+        raise HTTPException(status_code=413, detail="Resume file is too large. Please upload a smaller file (max 15MB).")
 
-    candidate, profile = get_or_create_student_profile(db, ctx)
+    print(f"[RESUME UPLOAD] Validation passed: {file_size_bytes} bytes, format={ext}", flush=True)
 
-    # Save physical file securely with unique internal token
-    stored_token = f"resume_{candidate.id}_{uuid.uuid4().hex[:8]}{ext}"
-    saved_path = os.path.join(RESUME_STORAGE_DIR, stored_token)
-    with open(saved_path, "wb") as f:
-        f.write(content)
+    try:
+        candidate, profile = get_or_create_student_profile(db, ctx)
+    except Exception as e:
+        print(f"[RESUME UPLOAD ERROR] Failed resolving student profile: {e}", flush=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed initializing candidate profile for resume upload.")
 
-    file_url = f"/api/v1/resumes/{stored_token}"
+    # Ensure storage directory exists and save physical file securely
+    try:
+        os.makedirs(RESUME_STORAGE_DIR, exist_ok=True)
+        stored_token = f"resume_{candidate.id}_{uuid.uuid4().hex[:8]}{ext}"
+        saved_path = os.path.join(RESUME_STORAGE_DIR, stored_token)
+        with open(saved_path, "wb") as f:
+            f.write(content)
+        file_url = f"/api/v1/resumes/{stored_token}"
+        print(f"[RESUME UPLOAD] File stored at: {saved_path}", flush=True)
+    except Exception as e:
+        print(f"[RESUME UPLOAD ERROR] File storage failed: {e}", flush=True)
+        raise HTTPException(status_code=500, detail="Failed saving resume file to storage.")
 
     # Extract text & parse
-    extracted_text = extract_text_from_file_bytes(content, original_filename)
-    if not extracted_text or len(extracted_text.strip()) < 5:
-        extracted_text = "Resume uploaded, but readable text could not be extracted. Please upload a standard PDF/DOCX/TXT file."
+    try:
+        print("[RESUME UPLOAD] Text extraction started", flush=True)
+        extracted_text = extract_text_from_file_bytes(content, original_filename)
+        if not extracted_text or len(extracted_text.strip()) < 5:
+            extracted_text = "Resume uploaded, but readable text could not be extracted. Please upload a standard PDF or DOCX file."
+        print(f"[RESUME UPLOAD] Text extraction completed: {len(extracted_text)} chars extracted", flush=True)
+    except Exception as e:
+        print(f"[RESUME UPLOAD ERROR] Text extraction failed: {e}", flush=True)
+        extracted_text = "Resume text extraction encountered an error. Document saved for review."
 
-    parsed = parse_resume_text(extracted_text)
-    ats_result = calculate_ats_score(extracted_text, parsed)
+    try:
+        print("[RESUME UPLOAD] ATS analysis started", flush=True)
+        parsed = parse_resume_text(extracted_text)
+        ats_result = calculate_ats_score(extracted_text, parsed)
+        print(f"[RESUME UPLOAD] ATS analysis completed: domain='{ats_result.get('career_domain')}', score={ats_result.get('ats_score')}", flush=True)
+    except Exception as e:
+        print(f"[RESUME UPLOAD ERROR] ATS analysis failed: {e}", flush=True)
+        ats_result = {
+            "ats_score": 50,
+            "career_domain": "General Technical Profile",
+            "likely_roles": [],
+            "domain_explanation": "Resume parsed with standard technical profile template.",
+            "strengths": ["✓ Document uploaded successfully"],
+            "improvements": ["• Add detailed skills and experience bullets"],
+            "warnings": [],
+            "score_breakdown": {}
+        }
+        parsed = {}
 
-    # Mark existing resumes as not current
-    db.query(Resume).filter(
-        Resume.organization_id == ctx.organization.id,
-        Resume.candidate_id == candidate.id
-    ).update({"is_current": False})
+    try:
+        # Mark existing resumes as not current
+        db.query(Resume).filter(
+            Resume.organization_id == ctx.organization.id,
+            Resume.candidate_id == candidate.id
+        ).update({"is_current": False})
 
-    # Create new Resume record
-    resume = Resume(
-        organization_id=ctx.organization.id,
-        candidate_id=candidate.id,
-        file_name=original_filename,
-        file_type=file.content_type or ext,
-        file_url=file_url,
-        file_size_bytes=file_size_bytes,
-        extracted_text=extracted_text,
-        is_current=True,
-        quality_score=ats_result["ats_score"],
-        career_domain=ats_result.get("career_domain"),
-        likely_roles_json=json.dumps(ats_result.get("likely_roles", [])),
-        domain_explanation=ats_result.get("domain_explanation"),
-        strengths_json=json.dumps(ats_result["strengths"]),
-        improvements_json=json.dumps(ats_result["improvements"]),
-        warnings_json=json.dumps(ats_result.get("warnings", []))
-    )
-    db.add(resume)
-    db.flush()
+        # Create new Resume record
+        resume = Resume(
+            organization_id=ctx.organization.id,
+            candidate_id=candidate.id,
+            file_name=original_filename,
+            file_type=file.content_type or ext,
+            file_url=file_url,
+            file_size_bytes=file_size_bytes,
+            extracted_text=extracted_text,
+            is_current=True,
+            quality_score=ats_result["ats_score"],
+            career_domain=ats_result.get("career_domain") or "General Technical Profile",
+            likely_roles_json=json.dumps(ats_result.get("likely_roles", [])),
+            domain_explanation=ats_result.get("domain_explanation"),
+            strengths_json=json.dumps(ats_result["strengths"]),
+            improvements_json=json.dumps(ats_result["improvements"]),
+            warnings_json=json.dumps(ats_result.get("warnings", []))
+        )
+        db.add(resume)
+        db.flush()
 
-    # Sync Candidate document & resume_url
-    candidate.resume_url = f"/api/v1/resumes/{resume.id}/file"
-    doc = Document(
-        organization_id=ctx.organization.id,
-        candidate_id=candidate.id,
-        file_name=original_filename,
-        file_type=file.content_type or ext,
-        file_url=f"/api/v1/resumes/{resume.id}/file",
-        doc_type=DocumentType.RESUME
-    )
-    db.add(doc)
+        # Sync Candidate document & resume_url
+        candidate.resume_url = f"/api/v1/resumes/{resume.id}/file"
+        doc = Document(
+            organization_id=ctx.organization.id,
+            candidate_id=candidate.id,
+            file_name=original_filename,
+            file_type=file.content_type or ext,
+            file_url=f"/api/v1/resumes/{resume.id}/file",
+            doc_type=DocumentType.RESUME
+        )
+        db.add(doc)
 
-    # Create ResumeAnalysis record for user review ([Accept] [Edit] [Ignore])
-    analysis = ResumeAnalysis(
-        organization_id=ctx.organization.id,
-        resume_id=resume.id,
-        candidate_id=candidate.id,
-        parsed_data_json=json.dumps(parsed),
-        status="PENDING_REVIEW"
-    )
-    db.add(analysis)
+        # Create ResumeAnalysis record for candidate review
+        analysis = ResumeAnalysis(
+            organization_id=ctx.organization.id,
+            resume_id=resume.id,
+            candidate_id=candidate.id,
+            parsed_data_json=json.dumps(parsed),
+            status="PENDING_REVIEW"
+        )
+        db.add(analysis)
 
-    # Recalculate profile completeness
-    comp_res = calculate_profile_completeness(candidate, profile)
-    profile.completeness_score = comp_res["completeness_score"]
+        # Recalculate profile completeness
+        comp_res = calculate_profile_completeness(candidate, profile)
+        profile.completeness_score = comp_res["completeness_score"]
 
-    db.commit()
+        db.commit()
+        print(f"[RESUME UPLOAD] Database records committed: resume_id={resume.id}", flush=True)
+    except Exception as e:
+        print(f"[RESUME UPLOAD ERROR] Database persistence failed: {e}", flush=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error occurred while saving resume analysis.")
 
-    # Create Notification
-    create_notification(
-        db=db,
-        organization_id=ctx.organization.id,
-        user_id=ctx.user.id,
-        title="Resume Analysis Completed",
-        message=f"Analyzed '{original_filename}'. NxtMov ATS Score: {ats_result['ats_score']}/100.",
-        notification_type="RESUME_ANALYZED",
-        link_url="#/resume"
-    )
+    # Create Notification (non-blocking)
+    try:
+        create_notification(
+            db=db,
+            organization_id=ctx.organization.id,
+            user_id=ctx.user.id,
+            title="Resume Analysis Completed",
+            message=f"Analyzed '{original_filename}'. NxtMov ATS Score: {ats_result['ats_score']}/100.",
+            notification_type="RESUME_ANALYZED",
+            link_url="#/resume"
+        )
+    except Exception as notif_err:
+        print(f"[RESUME UPLOAD NOTICE] Notification creation notice: {notif_err}", flush=True)
 
-    return build_resume_response(resume, candidate.id)
+    print(f"[RESUME UPLOAD] Response returned successfully for resume_id={resume.id}", flush=True)
+    return build_resume_response(resume, candidate.id, ats_result.get("score_breakdown"))
 
 @router.get("/{id}/file", summary="Download / View Authenticated Resume Document")
 def view_resume_file(

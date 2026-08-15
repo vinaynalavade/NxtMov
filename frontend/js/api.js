@@ -219,6 +219,16 @@ export class API {
           } else {
             errorMsg = "Your session has expired. Please log in again.";
           }
+        } else if (response.status === 403) {
+          errorMsg = data?.detail || "You do not have permission to perform this action.";
+        } else if (response.status === 404) {
+          errorMsg = data?.detail || "The requested resource was not found.";
+        } else if (response.status === 413) {
+          errorMsg = data?.detail || "Resume file is too large. Please upload a smaller file (max 15MB).";
+        } else if (response.status === 415) {
+          errorMsg = data?.detail || "Unsupported file type. Please upload a PDF or DOCX resume.";
+        } else if (response.status === 422) {
+          errorMsg = normalizeErrorMessage(data?.detail || data, "Resume could not be processed. Please check the file and try again.");
         } else if (response.status === 429) {
           if (isLoginEndpoint) {
             errorMsg = "Too many login attempts. Please wait a moment and try again.";
@@ -236,6 +246,8 @@ export class API {
           } else if (rawDetail.includes("password")) {
             errorMsg = "Password does not meet the required security requirements.";
           }
+        } else if (response.status === 502 || response.status === 503 || response.status === 504) {
+          errorMsg = "The NxtMov server is currently unavailable or restarting. Please try again in a few moments.";
         } else if (response.status >= 500) {
           const detail = typeof data?.detail === "string" ? data.detail : null;
           if (detail && !detail.startsWith("<") && !detail.toLowerCase().includes("traceback")) {
@@ -244,6 +256,8 @@ export class API {
             errorMsg = "Something went wrong while signing you in. Please try again.";
           } else if (isRegisterEndpoint) {
             errorMsg = "Something went wrong while creating your account. Please try again.";
+          } else if (endpoint.includes("/resumes/upload")) {
+            errorMsg = "Resume processing failed on the server. Please try again.";
           } else {
             errorMsg = "Something went wrong on the server. Please try again.";
           }
@@ -254,7 +268,7 @@ export class API {
       return data;
     } catch (error) {
       if (error instanceof TypeError && (error.message.includes("fetch") || error.message.includes("NetworkError") || error.message.includes("Failed to fetch"))) {
-        throw new Error("Unable to connect to NxtMov server. Please check your network connection or try again later.");
+        throw new Error("Unable to reach the NxtMov server. Please check your connection and try again.");
       }
       throw error;
     }

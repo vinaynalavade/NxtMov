@@ -68,6 +68,18 @@ def test_cors_dynamic_local_ports():
         assert response.headers.get("access-control-allow-origin") == origin
         assert response.headers.get("access-control-allow-credentials") == "true"
 
+def test_cors_preflight_options_resume_upload_github_pages():
+    headers = {
+        "Origin": "https://vinaynalavade.github.io",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "authorization,content-type"
+    }
+    response = client.options("/api/v1/resumes/upload", headers=headers)
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "https://vinaynalavade.github.io"
+    assert response.headers.get("access-control-allow-credentials") == "true"
+    assert "POST" in response.headers.get("access-control-allow-methods", "")
+
 def test_cors_rejects_unauthorized_external_origin():
     response = client.options(
         "/api/v1/auth/config",
