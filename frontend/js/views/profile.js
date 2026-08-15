@@ -1,5 +1,5 @@
 import { api, getAuthenticatedFileUrl } from "../api.js";
-import { showToast, createModal, validateFullName, validateEmail, validatePhone, validateUrl } from "../components.js";
+import { showToast, createModal, validateFullName, validateEmail, validatePhone, validateUrl, validateLinkedinUrl, validateGithubUrl, validateYear, validateSalary, validateNoticePeriod } from "../components.js";
 import { store } from "../store.js";
 import { getIcon } from "../icons.js";
 
@@ -428,13 +428,17 @@ export function initProfileEvents() {
     const portfolio_url = document.getElementById("prof-portfolio").value.trim();
     const projects_json = document.getElementById("prof-projects").value.trim();
 
-    if (linkedin_url) {
-      const err = validateUrl(linkedin_url, "LinkedIn");
-      if (err) { showToast(err, "danger"); return; }
+    if (linkedin_url && !validateLinkedinUrl(linkedin_url)) {
+      showToast("Please enter a valid LinkedIn URL (e.g. https://linkedin.com/in/username)", "danger");
+      return;
     }
-    if (github_url) {
-      const err = validateUrl(github_url, "GitHub");
-      if (err) { showToast(err, "danger"); return; }
+    if (github_url && !validateGithubUrl(github_url)) {
+      showToast("Please enter a valid GitHub profile URL (e.g. https://github.com/username)", "danger");
+      return;
+    }
+    if (portfolio_url && !validateUrl(portfolio_url)) {
+      showToast("Please enter a valid portfolio URL starting with http:// or https://", "danger");
+      return;
     }
 
     try {
@@ -455,15 +459,19 @@ export function initProfileEvents() {
     const old_password = document.getElementById("settings-old-pass").value;
     const new_password = document.getElementById("settings-new-pass").value;
 
-    const nameErr = validateFullName(full_name);
-    if (nameErr) { showToast(nameErr, "danger"); return; }
+    if (!validateFullName(full_name)) {
+      showToast("Please enter a valid full name (letters, spaces, and hyphens only).", "danger");
+      return;
+    }
 
-    const emailErr = validateEmail(email);
-    if (emailErr) { showToast(emailErr, "danger"); return; }
+    if (!validateEmail(email)) {
+      showToast("Please enter a valid email address.", "danger");
+      return;
+    }
 
-    if (phone) {
-      const phoneErr = validatePhone(phone);
-      if (phoneErr) { showToast(phoneErr, "danger"); return; }
+    if (phone && !validatePhone(phone)) {
+      showToast("Please enter a valid mobile number (7 to 15 digits).", "danger");
+      return;
     }
 
     const payload = { full_name, email, phone };

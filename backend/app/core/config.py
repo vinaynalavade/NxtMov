@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     DEMO_USER_EMAIL: str = "demo@nxtmov.local"
     DEMO_USER_PASSWORD: str = "NxtMov@123"
 
+    # Application Frontend Base URL
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "https://vinaynalavade.github.io/NxtMov")
+
     # CORS Configuration
     BACKEND_CORS_ORIGINS: List[str] = [
     "http://localhost",

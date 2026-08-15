@@ -1,5 +1,5 @@
 import { store } from "./store.js";
-import { api } from "./api.js";
+import { api, getAuthenticatedFileUrl } from "./api.js";
 import { getIcon } from "./icons.js";
 
 /* ================================================================
@@ -243,7 +243,8 @@ export function renderSidebarUserProfile() {
     if (avatarEl) {
       const avatarUrl = user.avatar_url || state.profile?.avatar_url;
       if (avatarUrl) {
-        avatarEl.innerHTML = `<img src="${avatarUrl}" alt="${user.full_name || 'User'}" class="user-avatar-img" />`;
+        const fullAvatarUrl = getAuthenticatedFileUrl(avatarUrl);
+        avatarEl.innerHTML = `<img src="${fullAvatarUrl}" alt="${user.full_name || 'User'}" class="user-avatar-img" onerror="this.onerror=null; this.parentElement.textContent='${(user.full_name || user.email).split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2)}';" />`;
       } else {
         const initials = (user.full_name || user.email)
           .split(" ")

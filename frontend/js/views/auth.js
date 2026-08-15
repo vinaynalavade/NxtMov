@@ -280,3 +280,63 @@ export function initRegisterListeners() {
     }
   };
 }
+
+export function renderVerifyEmail() {
+  return `
+    <div class="card" style="max-width: 440px; margin: 3.5rem auto; padding: 2.25rem; text-align: center;">
+      <div style="margin-bottom: 1.5rem;">
+        <div style="display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; background: var(--bg-secondary); color: var(--primary-color); margin-bottom: 1rem;">
+          ${getIcon("mail", "", 28)}
+        </div>
+        <h2 style="font-size: 1.35rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.5rem;">Email Verification</h2>
+        <p id="verify-email-status-text" style="color: var(--text-secondary); font-size: 0.875rem; line-height: 1.5;">
+          Confirming your email address...
+        </p>
+      </div>
+
+      <div id="verify-email-action-container" style="display: none; margin-top: 1.5rem;">
+        <a href="#/profile" class="btn btn-primary" style="width: 100%; justify-content: center;">
+          Go to Profile
+        </a>
+      </div>
+    </div>
+  `;
+}
+
+export async function initVerifyEmailListeners() {
+  const hash = window.location.hash;
+  const statusText = document.getElementById("verify-email-status-text");
+  const actionContainer = document.getElementById("verify-email-action-container");
+
+  let token = null;
+  if (hash.includes("?")) {
+    const params = new URLSearchParams(hash.split("?")[1]);
+    token = params.get("token");
+  }
+  if (!token && window.location.search) {
+    const params = new URLSearchParams(window.location.search);
+    token = params.get("token");
+  }
+
+  if (!token) {
+    if (statusText) statusText.textContent = "This verification link is invalid or has already been used.";
+    if (actionContainer) actionContainer.style.display = "block";
+    return;
+  }
+
+  try {
+    const res = await API.post("/auth/verify-email/confirm", { token });
+    if (statusText) {
+      statusText.innerHTML = `<span style="color: var(--success-color); font-weight: 600;">✓ ${res.message || 'Email verified successfully!'}</span>`;
+    }
+    showToast(res.message || "Email verified successfully!", "success");
+  } catch (err) {
+    const errMsg = normalizeErrorMessage(err, "This verification link has expired. Please request a new one.");
+    if (statusText) {
+      statusText.innerHTML = `<span style="color: var(--danger-color); font-weight: 500;">${errMsg}</span>`;
+    }
+    showToast(errMsg, "danger");
+  } finally {
+    if (actionContainer) actionContainer.style.display = "block";
+  }
+}

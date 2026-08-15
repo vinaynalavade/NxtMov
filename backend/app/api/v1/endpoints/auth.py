@@ -367,24 +367,51 @@ def switch_workspace(
 
 @router.post("/verify-email/request", summary="Request Email Verification Token")
 def request_email_verification(
+    request: Request,
     req: Optional[EmailVerifyRequest] = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     if user.is_email_verified:
-        return {"message": "Your email address is already verified.", "is_verified": True}
+        return {"message": "Email address is already verified.", "is_verified": True}
 
     token = secrets.token_urlsafe(32)
     user.email_verification_token = token
     db.commit()
 
-    # In demo mode, automatically verify
+    # Determine frontend application URL
+    origin = request.headers.get("origin") or request.headers.get("referer")
+    if origin and ("localhost" in origin or "127.0.0.1" in origin):
+        frontend_base = origin.rstrip("/")
+    else:
+        frontend_base = settings.FRONTEND_URL.rstrip("/")
+    
+    verification_link = f"{frontend_base}/#/verify-email?token={token}"
+
     if settings.NXTMOV_DEMO_MODE and user.email == settings.DEMO_USER_EMAIL:
         user.is_email_verified = True
         db.commit()
-        return {"message": "Email verified successfully.", "is_verified": True}
+        return {"message": "Verification link sent. Check your email.", "is_verified": True, "verification_link": verification_link}
 
-    return {"message": "Verification email sent. Please check your inbox.", "is_verified": False}
+    return {"message": "Verification link sent. Check your email.", "is_verified": False, "verification_link": verification_link}
+
+@router.get("/verify-email", summary="Confirm Email Verification via Direct Link")
+def confirm_email_verification_get(
+    token: str = Query(..., description="Email verification token"),
+    db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(User.email_verification_token == token).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This verification link is invalid or has already been used."
+        )
+
+    user.is_email_verified = True
+    user.email_verification_token = None
+    db.commit()
+
+    return {"message": "Email verified successfully.", "is_verified": True}
 
 @router.post("/verify-email/confirm", summary="Confirm Email Verification Token")
 def confirm_email_verification(

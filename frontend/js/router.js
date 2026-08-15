@@ -1,7 +1,7 @@
 import { api } from "./api.js";
 import { store } from "./store.js";
 import { updateSidebarActiveRoute } from "./sidebar.js";
-import { renderLogin, initLoginListeners, renderRegister, initRegisterListeners } from "./views/auth.js";
+import { renderLogin, initLoginListeners, renderRegister, initRegisterListeners, renderVerifyEmail, initVerifyEmailListeners } from "./views/auth.js";
 import { renderDashboard, initDashboardListeners } from "./views/dashboard.js";
 import { renderCompanies, initCompaniesListeners } from "./views/companies.js";
 import { renderContacts, initContactsListeners } from "./views/contacts.js";
@@ -22,6 +22,7 @@ import { initPasswordToggle } from "./components.js";
 const routes = {
   "/login": { render: renderLogin, init: initLoginListeners, public: true },
   "/register": { render: renderRegister, init: initRegisterListeners, public: true },
+  "/verify-email": { render: renderVerifyEmail, init: initVerifyEmailListeners, public: true },
   "/dashboard": { render: renderDashboard, init: initDashboardListeners },
   "/profile": { render: renderProfile, init: initProfileListeners },
   "/resume": { render: renderResume, init: initResumeListeners },

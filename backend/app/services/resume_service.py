@@ -143,22 +143,45 @@ DEGREE_MATCHERS = [
     ("Secondary School / 10th Grade", r"(?i)\b(?:10th\s+(?:grade|standard|pass)|ssc)\b"),
 ]
 
+import unicodedata
+
+DISALLOWED_NAME_WORDS = {
+    "resume", "curriculum", "vitae", "cv", "page", "contact", "summary",
+    "experience", "education", "skills", "projects", "objective", "profile",
+    "phone", "email", "address", "declaration", "about", "details", "personal",
+    "technical", "professional", "career", "developer", "engineer", "analyst",
+    "manager", "lead", "associate", "intern", "student", "fresher", "gender",
+    "nationality", "date", "birth", "languages", "hobbies", "interests", "activities",
+    "pdf", "type", "obj", "endobj", "stream", "endstream", "xref", "trailer",
+    "bachelor", "master", "technology", "engineering", "science", "university",
+    "college", "institute", "school", "high", "secondary"
+}
+
 def clean_and_normalize_text(raw_text: str) -> str:
     """
     Sanitizes extracted text:
-    - Removes null bytes and control characters
+    - Normalizes Unicode (NFKC)
+    - Removes null bytes and non-printable control characters
     - Strips PDF headers, binary markers, and xref/trailer artifacts
     - Normalizes unicode spaces, dashes, and quotes
+    - Strips markdown link wrappers (e.g. [name](mailto:...))
     - Preserves meaningful section line breaks
     """
     if not raw_text:
         return ""
 
-    text = raw_text.replace("\x00", "")
-    text = re.sub(r"[\u00a0\u1680\u2000-\u200b\u202f\u205f\u3000]", " ", text)
+    # 1. Unicode normalization
+    text = unicodedata.normalize("NFKC", raw_text)
+    text = text.replace("\x00", "")
+
+    # 2. Normalize whitespace, dashes, and quotes
+    text = re.sub(r"[\u00a0\u1680\u2000-\u200b\u202f\u205f\u3000\ufeff]", " ", text)
     text = re.sub(r"[\u2010-\u2015\u2212\ufffd\x96\x97]", "-", text)
     text = re.sub(r"[\u2018\u2019\u201a\u201b]", "'", text)
     text = re.sub(r"[\u201c\u201d\u201e\u201f]", '"', text)
+
+    # 3. Clean markdown wrappers: [text](mailto:...) -> text
+    text = re.sub(r"\[([^\]]+)\]\((?:mailto:)?[^\)]+\)", r"\1", text)
 
     cleaned_lines = []
     for line in text.splitlines():
@@ -166,6 +189,7 @@ def clean_and_normalize_text(raw_text: str) -> str:
         if not line_str:
             cleaned_lines.append("")
             continue
+        # Strip PDF internal tokens
         if re.match(r"^%PDF-\d+\.\d+", line_str, re.IGNORECASE):
             continue
         if re.match(r"^\d+\s+\d+\s+obj\b", line_str, re.IGNORECASE):
@@ -174,8 +198,9 @@ def clean_and_normalize_text(raw_text: str) -> str:
             continue
         if re.match(r"^/Type\s*/", line_str):
             continue
-        printable_ratio = sum(1 for c in line_str if 32 <= ord(c) <= 126 or ord(c) in [9, 10, 13]) / max(len(line_str), 1)
-        if printable_ratio < 0.6 and len(line_str) > 10:
+        # Exclude heavily non-printable or corrupted lines
+        printable_ratio = sum(1 for c in line_str if 32 <= ord(c) <= 126 or ord(c) in [9, 10, 13] or c.isalpha()) / max(len(line_str), 1)
+        if printable_ratio < 0.60 and len(line_str) > 6:
             continue
         cleaned_lines.append(line_str)
 
@@ -186,13 +211,15 @@ def clean_and_normalize_text(raw_text: str) -> str:
 def extract_text_from_file_bytes(content: bytes, file_name: str) -> str:
     """
     Extracts clean, readable text from uploaded resume bytes (.pdf, .docx, .txt).
+    Never falls back to decoding raw binary streams as text.
     """
     if not content or len(content) == 0:
         return ""
 
     ext = file_name.lower().split(".")[-1] if "." in file_name else ""
 
-    if ext == "pdf":
+    # 1. PDF: Check magic bytes or extension
+    if ext == "pdf" or content.startswith(b"%PDF"):
         try:
             reader = pypdf.PdfReader(io.BytesIO(content))
             page_texts = []
@@ -200,12 +227,15 @@ def extract_text_from_file_bytes(content: bytes, file_name: str) -> str:
                 extracted = page.extract_text()
                 if extracted and extracted.strip():
                     page_texts.append(extracted.strip())
+            if not page_texts:
+                return ""
             full_pdf_text = "\n\n".join(page_texts)
             return clean_and_normalize_text(full_pdf_text)
         except Exception:
             return ""
 
-    elif ext == "docx":
+    # 2. DOCX: Check magic bytes or extension
+    elif ext in ["docx", "doc"] or content.startswith(b"PK\x03\x04"):
         try:
             doc = docx.Document(io.BytesIO(content))
             text_parts = []
@@ -217,18 +247,29 @@ def extract_text_from_file_bytes(content: bytes, file_name: str) -> str:
                     row_data = [cell.text.strip() for cell in row.cells if cell.text.strip()]
                     if row_data:
                         text_parts.append(" | ".join(row_data))
+            if not text_parts:
+                return ""
             return clean_and_normalize_text("\n".join(text_parts))
         except Exception:
             return ""
 
+    # 3. Plain Text: Ensure not binary
     else:
+        if b"\x00" in content:
+            return ""
+        
+        sample = content[:4096]
+        non_printable = sum(1 for b in sample if b < 9 or (13 < b < 32) or b == 127)
+        if len(sample) > 0 and (non_printable / len(sample)) > 0.15:
+            return ""
+
         for encoding in ["utf-8-sig", "utf-8", "cp1252", "latin-1"]:
             try:
                 decoded = content.decode(encoding)
                 return clean_and_normalize_text(decoded)
             except (UnicodeDecodeError, LookupError):
                 continue
-        return clean_and_normalize_text(content.decode("utf-8", errors="ignore"))
+        return ""
 
 def extract_education_entries(text: str) -> List[Dict[str, Any]]:
     if not text:
@@ -313,6 +354,137 @@ def extract_education_entries(text: str) -> List[Dict[str, Any]]:
         })
 
     return entries
+
+def extract_email(text: str) -> Tuple[Optional[str], float]:
+    """
+    Extracts and validates email address with confidence scoring.
+    Rejects malformed emails, PDF artifacts, markdown wrappers, and invalid TLDs.
+    """
+    if not text:
+        return None, 0.0
+    
+    clean_text = re.sub(r"\[([^\]]+)\]\(mailto:[^\)]+\)", r"\1", text)
+    matches = re.finditer(r"\b([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,10})\b", clean_text)
+    
+    candidates = []
+    for m in matches:
+        raw_email = m.group(1).strip()
+        email_clean = raw_email.strip(".,;:()[]{}<>\"'")
+        parts = email_clean.split("@")
+        if len(parts) != 2:
+            continue
+        user_part, domain_part = parts[0], parts[1]
+        
+        if len(user_part) < 1 or len(domain_part) < 3 or "." not in domain_part:
+            continue
+        
+        tld = domain_part.split(".")[-1]
+        if not tld.isalpha() or len(tld) < 2 or len(tld) > 10:
+            continue
+            
+        if re.search(r"[^a-zA-Z0-9._%+-]", user_part) or re.search(r"[^a-zA-Z0-9.-]", domain_part):
+            continue
+            
+        confidence = 0.95
+        if any(h in domain_part.lower() for h in ["gmail.com", "outlook.com", "yahoo.com", "hotmail.com", "icloud.com", "proton.me", "nxtmov"]):
+            confidence = 0.99
+            
+        candidates.append((email_clean.lower(), confidence))
+        
+    if candidates:
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        return candidates[0][0], candidates[0][1]
+        
+    return None, 0.0
+
+def extract_phone(text: str) -> Tuple[Optional[str], float]:
+    """
+    Extracts and validates plausible phone number with confidence scoring.
+    Rejects PDF object IDs (e.g. 0069006300720), dates, serial numbers, and random digit sequences.
+    """
+    if not text:
+        return None, 0.0
+
+    # 1. Contextual search: Near phone keywords first
+    labeled_match = re.search(
+        r"(?i)(?:phone|mobile|cell|contact|tel|call|whatsapp|mob|ph)[\s:.\-#–—|]+\(?(\+?[0-9]{1,4})?\)?[\s.-]?\(?([0-9]{2,5})\)?[\s.-]?([0-9]{3,5})[\s.-]?([0-9]{3,5})",
+        text
+    )
+    if labeled_match:
+        full_match = labeled_match.group(0)
+        digits_only = re.sub(r"\D", "", full_match)
+        if 7 <= len(digits_only) <= 15 and not digits_only.startswith("0000"):
+            raw_phone = labeled_match.group(0).split(":", 1)[-1].strip() if ":" in labeled_match.group(0) else labeled_match.group(0).strip()
+            raw_phone = re.sub(r"(?i)^(?:phone|mobile|cell|contact|tel|call|whatsapp|mob|ph)[\s:.\-#–—|]+", "", raw_phone).strip()
+            return raw_phone, 0.95
+
+    # 2. Indian 10-digit mobile (+91 optional, starting with 6-9)
+    in_phone = re.search(r"(?:\+91[\s-]?)?[6-9]\d{4}[\s-]?\d{5}\b", text)
+    if in_phone:
+        cand = in_phone.group(0).strip()
+        digits = re.sub(r"\D", "", cand)
+        if len(set(digits[-10:])) > 3:
+            return cand, 0.90
+
+    # 3. International formatted phone: +X (XXX) XXX-XXXX or XXX-XXX-XXXX
+    intl_phone = re.search(r"\b(?:\+\d{1,3}[\s-]?)?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b", text)
+    if intl_phone:
+        cand = intl_phone.group(0).strip()
+        digits = re.sub(r"\D", "", cand)
+        if 10 <= len(digits) <= 15:
+            return cand, 0.85
+
+    return None, 0.0
+
+def extract_name(text: str, email: Optional[str] = None) -> Tuple[Optional[str], float]:
+    """
+    Extracts candidate name using header structure, formatting, and validation.
+    Rejects PDF headers, email addresses, URLs, phone numbers, single tokens, and non-name phrases.
+    """
+    if not text:
+        return None, 0.0
+
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    if not lines:
+        return None, 0.0
+
+    # 1. Explicit name label: "Name: ..." or "Full Name - ..."
+    name_label_match = re.search(r"(?i)\b(?:full\s*name|candidate\s*name|name)\s*[:\-–—]\s*([A-Za-z\s\.\'\-]{3,40})", text)
+    if name_label_match:
+        cand = name_label_match.group(1).strip()
+        words = cand.split()
+        if 2 <= len(words) <= 4 and all(w.lower() not in DISALLOWED_NAME_WORDS for w in words):
+            if all(len(w) >= 2 and re.match(r"^[A-Za-z\.\'\-]+$", w) for w in words):
+                return cand.title(), 0.95
+
+    # 2. Header analysis: First 5 lines of document
+    for line in lines[:5]:
+        clean_l = re.sub(r"[^A-Za-z\s\.\'\-]", "", line).strip()
+        if not clean_l or len(clean_l) < 3 or len(clean_l) > 40:
+            continue
+        if "@" in line or "http" in line or ".com" in line or any(ch.isdigit() for ch in line):
+            continue
+        
+        words = clean_l.split()
+        if not (2 <= len(words) <= 4):
+            continue
+            
+        if any(w.lower() in DISALLOWED_NAME_WORDS for w in words):
+            continue
+            
+        if all(re.match(r"^[A-Z][a-z]+|[A-Z]+$", w) and len(w) >= 2 for w in words):
+            return clean_l.title(), 0.88
+
+    # 3. Fallback: Parse from verified email username
+    if email and "@" in email:
+        local_part = email.split("@")[0]
+        clean_local = re.sub(r"\d+", "", local_part)
+        if "." in clean_local:
+            parts = [p.capitalize() for p in clean_local.split(".") if p.isalpha() and len(p) >= 2 and p.lower() not in DISALLOWED_NAME_WORDS]
+            if 2 <= len(parts) <= 3:
+                return " ".join(parts), 0.70
+
+    return None, 0.0
 
 def detect_career_domain_and_roles(text: str, categorized_skills: Dict[str, List[str]]) -> Dict[str, Any]:
     """
@@ -426,7 +598,7 @@ def detect_career_domain_and_roles(text: str, categorized_skills: Dict[str, List
 
 def parse_resume_text(text: str) -> Dict[str, Any]:
     text = clean_and_normalize_text(text)
-    if not text or len(text.strip()) < 10:
+    if not text or len(text.strip()) < 15:
         return {
             "full_name": None,
             "email": None,
@@ -435,8 +607,8 @@ def parse_resume_text(text: str) -> Dict[str, Any]:
             "categorized_skills": {},
             "education": [],
             "education_entries": [],
-            "career_domain": "Unspecified",
-            "likely_roles": [],
+            "career_domain": "General Technical Profile",
+            "likely_roles": ["Technical Associate", "Software Associate"],
             "domain_explanation": "No readable text detected.",
             "linkedin_url": None,
             "github_url": None,
@@ -444,54 +616,17 @@ def parse_resume_text(text: str) -> Dict[str, Any]:
             "extraction_warning": "No readable text could be extracted from this file."
         }
 
-    lines = [line.strip() for line in text.split("\n") if line.strip()]
-
     # 1. Extract Email
-    email_match = re.search(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,7}\b", text)
-    email = email_match.group(0).strip() if email_match else None
+    email, email_conf = extract_email(text)
+    email_val = email if email_conf >= 0.75 else None
 
     # 2. Extract Phone
-    phone = None
-    in_phone = re.search(r"(?:\+91[\s-]?)?[6-9]\d{4}[\s-]?\d{5}\b", text)
-    if in_phone:
-        phone = in_phone.group(0).strip()
-    else:
-        intl_phone = re.search(r"(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b", text)
-        if intl_phone:
-            phone = intl_phone.group(0).strip()
+    phone, phone_conf = extract_phone(text)
+    phone_val = phone if phone_conf >= 0.75 else None
 
     # 3. Extract Name
-    candidate_name = None
-    name_label_match = re.search(r"(?i)\b(?:name|full\s*name|candidate\s*name)\s*[:\-]\s*([A-Za-z\s\.\'\-]{3,35})", text)
-    if name_label_match:
-        cand = name_label_match.group(1).strip()
-        if cand and not any(k in cand.lower() for k in ["resume", "curriculum", "email", "phone", "profile", "summary"]):
-            candidate_name = cand
-
-    if not candidate_name and lines:
-        for line in lines[:5]:
-            clean_l = line.strip()
-            if "@" in clean_l or "http" in clean_l or ".com" in clean_l or re.search(r"\d{4}", clean_l):
-                continue
-            lower_l = clean_l.lower()
-            if any(k in lower_l for k in [
-                "resume", "curriculum", "vitae", "cv", "page", "contact", "summary",
-                "experience", "education", "skills", "projects", "objective", "profile",
-                "phone", "email", "address", "declaration", "about me", "details"
-            ]):
-                continue
-            words = clean_l.split()
-            if 2 <= len(words) <= 4 and all(re.match(r"^[A-Z][a-zA-Z\.\'\-]*$", w) for w in words):
-                if len(clean_l) <= 35:
-                    candidate_name = clean_l
-                    break
-
-    if not candidate_name and email:
-        local_part = email.split("@")[0]
-        if "." in local_part:
-            parts = [p.capitalize() for p in local_part.split(".") if p.isalpha() and len(p) > 1]
-            if 2 <= len(parts) <= 3:
-                candidate_name = " ".join(parts)
+    name, name_conf = extract_name(text, email=email_val)
+    name_val = name if name_conf >= 0.70 else None
 
     # 4. Extract Structured Categorized Skills
     categorized_skills: Dict[str, List[str]] = {}
@@ -523,9 +658,9 @@ def parse_resume_text(text: str) -> Dict[str, Any]:
     clean_snippet = re.sub(r"\s+", " ", text[:500]).strip()
 
     return {
-        "full_name": candidate_name,
-        "email": email,
-        "phone": phone,
+        "full_name": name_val,
+        "email": email_val,
+        "phone": phone_val,
         "skills": sorted(list(flat_skills_set)),
         "categorized_skills": categorized_skills,
         "education": edu_display_list,

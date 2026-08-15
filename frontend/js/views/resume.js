@@ -362,6 +362,19 @@ async function loadResumeAnalysis(resumeId) {
     const container = document.getElementById("extracted-fields-container");
     card.style.display = "block";
 
+    const hasReliableData = (data.full_name || data.email || data.phone || (data.skills && data.skills.length > 0) || (data.education_entries && data.education_entries.length > 0));
+
+    if (!hasReliableData && data.extraction_warning) {
+      container.innerHTML = `
+        <div style="background: var(--bg-card); border: 1px solid var(--border-color); padding: 1.5rem; border-radius: var(--radius-md); grid-column: 1 / -1; text-align: center;">
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0;">
+            No reliable information could be extracted from this resume. Please upload a clear standard PDF, DOCX, or text document.
+          </p>
+        </div>
+      `;
+      return;
+    }
+
     // Format Education Entries
     let eduHtml = "";
     if (data.education_entries && data.education_entries.length > 0) {
@@ -378,7 +391,7 @@ async function loadResumeAnalysis(resumeId) {
     } else if (data.education && data.education.length > 0) {
       eduHtml = `<div style="font-size: 0.85rem; color: var(--text-primary);">${data.education.join("<br>")}</div>`;
     } else {
-      eduHtml = `<div style="font-size: 0.8rem; color: var(--text-muted);">No education records detected</div>`;
+      eduHtml = `<div style="font-size: 0.8rem; color: var(--text-muted);">Not confidently detected</div>`;
     }
 
     // Format Categorized Skills
@@ -395,7 +408,7 @@ async function loadResumeAnalysis(resumeId) {
     } else if (data.skills && data.skills.length > 0) {
       skillsHtml = `<div style="display: flex; flex-wrap: wrap; gap: 0.35rem;">${data.skills.map(s => `<span class="badge" style="background: var(--bg-secondary); color: var(--primary-color); font-size: 0.75rem; padding: 0.15rem 0.45rem; border-radius: 6px;">${s}</span>`).join("")}</div>`;
     } else {
-      skillsHtml = `<span style="font-size: 0.8rem; color: var(--text-muted);">None detected</span>`;
+      skillsHtml = `<span style="font-size: 0.8rem; color: var(--text-muted);">Not confidently detected</span>`;
     }
 
     const links = [];
@@ -415,7 +428,7 @@ async function loadResumeAnalysis(resumeId) {
     container.innerHTML = `
       <div style="background: var(--bg-card); border: 1px solid var(--border-color); padding: 0.875rem; border-radius: var(--radius-md);">
         <div style="font-size: 0.7rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 0.35rem;">CANDIDATE IDENTITY</div>
-        <div style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary);">${data.full_name || 'Not detected'}</div>
+        <div style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary);">${data.full_name || 'Not confidently detected'}</div>
         <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">${data.email || '—'} &bull; ${data.phone || '—'}</div>
       </div>
 

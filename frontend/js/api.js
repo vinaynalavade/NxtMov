@@ -61,64 +61,71 @@ export function getAuthenticatedFileUrl(relativeOrAbsoluteUrl) {
 }
 
 /**
- * Normalizes any error object, array, or string into a clean, human-readable string.
- * Prevents generic '[object Object]' error toasts.
+ * Normalizes any error object, array, string, or boolean into a clean, human-readable string.
+ * Prevents 'true', 'false', '[object Object]', or raw HTML error toasts.
  */
-export function normalizeErrorMessage(err) {
-  if (!err) return "An unexpected error occurred.";
-  
-  if (typeof err === "string") {
-    if (err === "[object Object]") return "An unexpected server error occurred.";
-    return err;
+export function normalizeErrorMessage(err, defaultFallback = "An unexpected error occurred. Please try again.") {
+  if (err === null || err === undefined || err === "" || typeof err === "boolean") {
+    return defaultFallback;
   }
-  
+
+  if (typeof err === "string") {
+    const trimmed = err.trim();
+    if (trimmed === "true" || trimmed === "false" || trimmed === "undefined" || trimmed === "null" || trimmed === "[object Object]" || trimmed === "{}") {
+      return defaultFallback;
+    }
+    if (trimmed.startsWith("<!DOCTYPE html") || trimmed.startsWith("<html")) {
+      return "Server returned an unexpected response. Please try again.";
+    }
+    return trimmed;
+  }
+
   if (err instanceof Error) {
-    if (err.message && typeof err.message === "string" && err.message !== "[object Object]") {
-      return err.message;
+    if (err.message) {
+      return normalizeErrorMessage(err.message, defaultFallback);
     }
   }
 
   // Handle FastAPI validation error array: [{ loc: [...], msg: "..." }, ...]
   if (Array.isArray(err)) {
     const msgs = err.map(e => {
-      if (typeof e === "string") return e;
+      if (typeof e === "string") return normalizeErrorMessage(e, "");
       if (e && typeof e === "object") {
         const locStr = Array.isArray(e.loc) ? e.loc.filter(l => l !== "body").join(" -> ") : "";
-        const msg = e.msg || e.message || (typeof e === "object" ? JSON.stringify(e) : String(e));
-        return locStr ? `${locStr}: ${msg}` : msg;
+        const msg = normalizeErrorMessage(e.msg || e.message || e.detail, "");
+        return locStr && msg ? `${locStr}: ${msg}` : msg;
       }
-      return String(e);
-    }).filter(m => m && m !== "[object Object]");
+      return "";
+    }).filter(m => m && m !== defaultFallback);
     if (msgs.length > 0) return msgs.join("; ");
   }
 
-  // Handle FastAPI error objects: { message: "...", detail: "..." }
+  // Handle FastAPI error objects: { detail: "...", message: "...", error: "..." }
   if (typeof err === "object") {
-    if (err.detail) {
-      const detailMsg = normalizeErrorMessage(err.detail);
-      if (detailMsg && detailMsg !== "[object Object]") return detailMsg;
+    if (err.detail !== undefined) {
+      return normalizeErrorMessage(err.detail, defaultFallback);
     }
-    if (err.message && typeof err.message === "string" && err.message !== "[object Object]") {
-      return err.message;
+    if (err.message !== undefined) {
+      return normalizeErrorMessage(err.message, defaultFallback);
     }
-    if (err.msg && typeof err.msg === "string" && err.msg !== "[object Object]") {
-      return err.msg;
+    if (err.msg !== undefined) {
+      return normalizeErrorMessage(err.msg, defaultFallback);
     }
-    if (err.error) {
-      const errRes = normalizeErrorMessage(err.error);
-      if (errRes && errRes !== "[object Object]") return errRes;
+    if (err.error !== undefined) {
+      return normalizeErrorMessage(err.error, defaultFallback);
     }
-    
+
     try {
       const json = JSON.stringify(err);
-      if (json && json !== "{}" && json !== "null") return json;
+      if (json && json !== "{}" && json !== "null" && !json.startsWith("[")) {
+        return json;
+      }
     } catch {
       // ignore
     }
   }
 
-  const str = String(err);
-  return str !== "[object Object]" ? str : "An unexpected error occurred. Please try again.";
+  return defaultFallback;
 }
 
 export class API {

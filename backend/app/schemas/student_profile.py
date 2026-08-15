@@ -47,6 +47,20 @@ def validate_url_field(v: Optional[str]) -> Optional[str]:
         raise ValueError("Please enter a valid URL (starting with https:// or http://).")
     return val
 
+def validate_location_field(v: Optional[str], field_name: str = "Location") -> Optional[str]:
+    if v is None:
+        return None
+    val = v.strip()
+    if not val:
+        return None
+    if len(val) > 100:
+        raise ValueError(f"{field_name} cannot exceed 100 characters.")
+    if "@" in val or "http://" in val or "https://" in val:
+        raise ValueError(f"{field_name} must be a valid geographic location name.")
+    if not any(c.isalpha() for c in val):
+        raise ValueError(f"{field_name} must contain valid geographic text.")
+    return re.sub(r"\s+", " ", val)
+
 class StudentProfileUpdate(BaseModel):
     avatar_url: Optional[str] = None
     city: Optional[str] = None
@@ -86,6 +100,11 @@ class StudentProfileUpdate(BaseModel):
 
     email_notifications_enabled: Optional[bool] = None
     job_alerts_enabled: Optional[bool] = None
+
+    @field_validator("city", "state", "country")
+    @classmethod
+    def check_locations(cls, v, info: ValidationInfo):
+        return validate_location_field(v, info.field_name.capitalize() if info and info.field_name else "Location")
 
     @field_validator("linkedin_url", "github_url", "portfolio_url")
     @classmethod

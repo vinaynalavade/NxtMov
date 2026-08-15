@@ -70,7 +70,7 @@ def test_multi_entry_education_detection_vinay_resume():
     parsed = parse_resume_text(resume_text)
 
     # 1. Verify candidate identity
-    assert parsed["full_name"] == "VINAY NALAVADE"
+    assert parsed["full_name"].upper() == "VINAY NALAVADE"
     assert parsed["email"] == "vinaynalavade0704@gmail.com"
     assert parsed["phone"] is not None and "93593" in parsed["phone"]
 
@@ -248,3 +248,19 @@ def test_resume_upload_view_and_avatar_lifecycle():
 
     prof_after_del = client.get("/api/v1/profile", headers=headers)
     assert prof_after_del.json()["avatar_url"] is None
+
+def test_raw_binary_and_pdf_corrupted_content_rejection():
+    """
+    Ensures raw PDF binary bytes or corrupted strings (like %PDF-1.7, stream tokens,
+    or random numbers) are rejected from being parsed as candidate name, email, or phone.
+    """
+    corrupted_raw_bytes = b"%PDF-1.7\n4 0 obj\n<< /Type /Catalog >>\nstream\n0069006300720 V-m@l.wZ C# Vue\nendstream\nendobj\nxref\ntrailer\nstartxref\n%%EOF"
+    extracted = extract_text_from_file_bytes(corrupted_raw_bytes, "corrupted.pdf")
+    # Should not produce raw PDF binary stream text
+    assert "%PDF" not in extracted
+    
+    # Even if parsed directly from messy text, the validators must reject fake PDF names/emails
+    parsed = parse_resume_text(extracted if extracted else "")
+    assert parsed["full_name"] is None or "%PDF" not in parsed["full_name"]
+    assert parsed["email"] is None or parsed["email"] != "v-m@l.wz"
+    assert parsed["phone"] is None or parsed["phone"] != "0069006300720"

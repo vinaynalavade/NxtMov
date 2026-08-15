@@ -420,3 +420,33 @@ export function validateUrl(url) {
     return false;
   }
 }
+
+export function validateLinkedinUrl(url) {
+  if (!url || typeof url !== "string") return false;
+  const trimmed = url.trim();
+  return /^(https?:\/\/)?(www\.)?linkedin\.com\/(in|company)\/[a-zA-Z0-9_-]+\/?$/i.test(trimmed);
+}
+
+export function validateGithubUrl(url) {
+  if (!url || typeof url !== "string") return false;
+  const trimmed = url.trim();
+  return /^(https?:\/\/)?(www\.)?github\.com\/[a-zA-Z0-9_-]+\/?$/i.test(trimmed);
+}
+
+export function validateYear(year) {
+  if (year === null || year === undefined || year === "") return true;
+  const y = parseInt(year, 10);
+  return !isNaN(y) && y >= 1970 && y <= 2035;
+}
+
+export function validateSalary(salary) {
+  if (salary === null || salary === undefined || salary === "") return true;
+  const s = parseFloat(salary);
+  return !isNaN(s) && s >= 0 && s <= 100000000;
+}
+
+export function validateNoticePeriod(days) {
+  if (days === null || days === undefined || days === "") return true;
+  const d = parseInt(days, 10);
+  return !isNaN(d) && d >= 0 && d <= 365;
+}
