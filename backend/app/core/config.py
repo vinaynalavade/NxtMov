@@ -1,6 +1,6 @@
 import os
-from typing import List, Union
-from pydantic import AnyHttpUrl, validator
+from typing import List, Union, Optional, Any
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
@@ -23,18 +23,44 @@ class Settings(BaseSettings):
 
     # CORS Configuration
     BACKEND_CORS_ORIGINS: List[str] = [
-    "http://localhost",
-    "http://localhost:8000",
-    "http://127.0.0.1",
-    "http://127.0.0.1:8000",
-    "http://localhost:5500",
-    "http://127.0.0.1:5500",
-    "http://localhost:5000",
-    "http://127.0.0.1:5000",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://vinaynalavade.github.io",
-]
+        "http://localhost",
+        "http://localhost:8000",
+        "http://127.0.0.1",
+        "http://127.0.0.1:8000",
+        "http://localhost:5500",
+        "http://127.0.0.1:5500",
+        "http://localhost:5501",
+        "http://127.0.0.1:5501",
+        "http://localhost:5502",
+        "http://127.0.0.1:5502",
+        "http://localhost:5000",
+        "http://127.0.0.1:5000",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "https://vinaynalavade.github.io",
+    ]
+
+    # Regex pattern for dynamic local development ports on localhost and 127.0.0.1
+    BACKEND_CORS_ORIGIN_REGEX: Optional[str] = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+
+    @field_validator("BACKEND_CORS_ORIGINS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: Any) -> List[str]:
+        if isinstance(v, str):
+            if v.startswith("[") and v.endswith("]"):
+                import json
+                try:
+                    return json.loads(v)
+                except Exception:
+                    pass
+            return [i.strip() for i in v.split(",") if i.strip()]
+        elif isinstance(v, (list, tuple, set)):
+            return [str(i).strip() for i in v if str(i).strip()]
+        return v
 
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./nxtmov.db")
