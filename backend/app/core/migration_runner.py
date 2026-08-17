@@ -10,7 +10,7 @@ from app.core.database import engine
 logger = logging.getLogger(__name__)
 
 INITIAL_REVISION = "ebc0d3f036ab"
-HEAD_REVISION = "a1b2c3d4e5f6"
+HEAD_REVISION = "f1e2d3c4b5a6"
 
 
 def get_current_alembic_revision(connection) -> str | None:
