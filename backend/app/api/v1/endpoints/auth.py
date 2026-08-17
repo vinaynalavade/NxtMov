@@ -71,67 +71,73 @@ def ensure_demo_user_exists(db: Session):
                     db.commit()
                     db.refresh(user)
 
-            # Check or create demo organization
-            demo_org = db.query(Organization).filter(Organization.owner_id == user.id).first()
-            if not demo_org:
-                demo_org = db.query(Organization).filter(Organization.slug == "demo-workspace").first()
-            if not demo_org:
-                demo_org = Organization(
-                    name="Demo Workspace",
-                    slug="demo-workspace",
-                    type=OrgType.INDIVIDUAL,
-                    owner_id=user.id
-                )
-                db.add(demo_org)
-                db.commit()
-                db.refresh(demo_org)
+            # Check or create demo organizations and memberships for all canonical roles
+            demo_roles = [
+                ("demo-workspace", "Demo Workspace", OrgType.CONSULTANCY, OrgRole.ADMIN),
+                ("demo-student-hub", "Student Career Hub", OrgType.INDIVIDUAL, OrgRole.STUDENT),
+                ("demo-mentor-workspace", "Student Mentorship Desk", OrgType.CONSULTANCY, OrgRole.MENTOR),
+                ("demo-recruiter-workspace", "Talent Sourcing & Recruitment", OrgType.CONSULTANCY, OrgRole.RECRUITER),
+            ]
 
-            # Check or create organization membership
-            membership = db.query(OrganizationMembership).filter(
-                OrganizationMembership.user_id == user.id,
-                OrganizationMembership.organization_id == demo_org.id
-            ).first()
-            if not membership:
-                membership = OrganizationMembership(
-                    user_id=user.id,
-                    organization_id=demo_org.id,
-                    role=OrgRole.ADMIN
-                )
-                db.add(membership)
-                db.commit()
+            for slug, name, otype, o_role in demo_roles:
+                d_org = db.query(Organization).filter(Organization.slug == slug).first()
+                if not d_org:
+                    d_org = Organization(
+                        name=name,
+                        slug=slug,
+                        type=otype,
+                        owner_id=user.id
+                    )
+                    db.add(d_org)
+                    db.commit()
+                    db.refresh(d_org)
 
-            # Check or create linked candidate
-            cand = db.query(Candidate).filter(
-                Candidate.organization_id == demo_org.id,
-                Candidate.email == user.email
-            ).first()
-            if not cand:
-                cand = Candidate(
-                    organization_id=demo_org.id,
-                    user_id=user.id,
-                    full_name=user.full_name,
-                    email=user.email,
-                    phone=user.phone,
-                    status=CandidateStatus.NEW
-                )
-                db.add(cand)
-                db.commit()
-                db.refresh(cand)
+                d_mem = db.query(OrganizationMembership).filter(
+                    OrganizationMembership.user_id == user.id,
+                    OrganizationMembership.organization_id == d_org.id
+                ).first()
+                if not d_mem:
+                    d_mem = OrganizationMembership(
+                        user_id=user.id,
+                        organization_id=d_org.id,
+                        role=o_role
+                    )
+                    db.add(d_mem)
+                    db.commit()
 
-            # Check or create student profile
-            profile = db.query(StudentProfile).filter(
-                StudentProfile.user_id == user.id
-            ).first()
-            if not profile:
-                profile = StudentProfile(
-                    organization_id=demo_org.id,
-                    user_id=user.id,
-                    candidate_id=cand.id,
-                    headline="Full Stack Software Engineer",
-                    completeness_score=85
-                )
-                db.add(profile)
-                db.commit()
+                # Check or create linked candidate
+                d_cand = db.query(Candidate).filter(
+                    Candidate.organization_id == d_org.id,
+                    Candidate.email == user.email
+                ).first()
+                if not d_cand:
+                    d_cand = Candidate(
+                        organization_id=d_org.id,
+                        user_id=user.id,
+                        full_name=user.full_name,
+                        email=user.email,
+                        phone=user.phone,
+                        status=CandidateStatus.NEW
+                    )
+                    db.add(d_cand)
+                    db.commit()
+                    db.refresh(d_cand)
+
+                # Check or create student profile
+                d_prof = db.query(StudentProfile).filter(
+                    StudentProfile.organization_id == d_org.id,
+                    StudentProfile.user_id == user.id
+                ).first()
+                if not d_prof:
+                    d_prof = StudentProfile(
+                        organization_id=d_org.id,
+                        user_id=user.id,
+                        candidate_id=d_cand.id,
+                        headline="Full Stack Software Engineer",
+                        completeness_score=85
+                    )
+                    db.add(d_prof)
+                    db.commit()
         except Exception as e:
             db.rollback()
 
@@ -141,13 +147,10 @@ from app.schemas.user import (
     PhoneOTPRequest, PhoneOTPConfirm,
     ForgotPasswordRequest, ResetPasswordRequest
 )
-from app.core.permissions import get_role_permissions
+from app.schemas.organization import OrganizationResponse, WorkspaceSwitchRequest
 
 def make_user_response(user: User, db: Session, active_org_id: Optional[int] = None) -> UserResponse:
-    u = UserResponse.model_validate(user)
-    profile = db.query(StudentProfile).filter(StudentProfile.user_id == user.id).first()
-    if profile and profile.avatar_url:
-        u.avatar_url = profile.avatar_url
+    from app.core.permissions import get_role_permissions
 
     memberships = (
         db.query(OrganizationMembership)
@@ -157,30 +160,59 @@ def make_user_response(user: User, db: Session, active_org_id: Optional[int] = N
 
     roles_list = []
     active_org_info = None
-    resolved_role = "STUDENT"
+    resolved_permissions = []
+    active_role_str = "STUDENT"
 
     for m in memberships:
         r_str = m.role.value if hasattr(m.role, "value") else str(m.role)
-        roles_list.append(UserRoleInfo(organization_id=m.organization_id, role=r_str))
-        if active_org_id and m.organization_id == active_org_id and m.organization:
-            active_org_info = ActiveOrgInfo(
-                id=m.organization.id,
-                name=m.organization.name,
-                role=r_str
-            )
-            resolved_role = r_str
-        elif not active_org_info and m.organization:
-            active_org_info = ActiveOrgInfo(
-                id=m.organization.id,
-                name=m.organization.name,
-                role=r_str
-            )
-            resolved_role = r_str
+        roles_list.append(UserRoleInfo(
+            organization_id=m.organization_id,
+            role=r_str,
+            organization_name=m.organization.name if m.organization else None
+        ))
 
-    u.roles = roles_list
-    u.active_organization = active_org_info
-    u.permissions = get_role_permissions(resolved_role)
-    return u
+        # Check if this membership matches the requested active_org_id
+        if active_org_id and m.organization_id == active_org_id:
+            active_role_str = r_str
+            active_org_info = ActiveOrgInfo(
+                id=m.organization.id if m.organization else m.organization_id,
+                name=m.organization.name if m.organization else "Workspace",
+                role=r_str
+            )
+            resolved_permissions = get_role_permissions(r_str, is_superuser=user.is_superuser)
+
+    # Fallback to first membership if active_org_info is still None
+    if not active_org_info and memberships:
+        first_m = memberships[0]
+        first_r = first_m.role.value if hasattr(first_m.role, "value") else str(first_m.role)
+        active_role_str = first_r
+        active_org_info = ActiveOrgInfo(
+            id=first_m.organization.id if first_m.organization else first_m.organization_id,
+            name=first_m.organization.name if first_m.organization else "Workspace",
+            role=first_r
+        )
+        resolved_permissions = get_role_permissions(first_r, is_superuser=user.is_superuser)
+
+    if not active_org_info:
+        resolved_permissions = get_role_permissions("STUDENT", is_superuser=user.is_superuser)
+
+    return UserResponse(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        phone=user.phone,
+        is_active=user.is_active,
+        is_email_verified=user.is_email_verified,
+        is_phone_verified=user.is_phone_verified,
+        is_superuser=user.is_superuser,
+        avatar_url=user.avatar_url,
+        headline=user.headline,
+        location=user.location,
+        active_organization=active_org_info,
+        roles=roles_list,
+        permissions=resolved_permissions,
+        created_at=user.created_at
+    )
 
 @router.get("/config", summary="Get Public Authentication Configuration")
 def get_auth_config(db: Session = Depends(get_db)):
@@ -195,7 +227,7 @@ def get_auth_config(db: Session = Depends(get_db)):
         "rate_limiting_enabled": True
     }
 
-@router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED, summary="Register New User Account")
+@router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED, summary="User Self-Registration")
 def register(request: Request, user_in: UserCreate, db: Session = Depends(get_db)):
     # 1. Rate limiting
     check_register_rate_limit(request)
@@ -290,7 +322,12 @@ def register(request: Request, user_in: UserCreate, db: Session = Depends(get_db
     )
 
 @router.post("/login", response_model=Token, summary="User Login")
-def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+async def login(
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    requested_role: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
     username_clean = form_data.username.strip().lower()
 
     check_login_rate_limit(request, username_clean)
@@ -302,14 +339,14 @@ def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="No account found with this email address.",
+            detail="Invalid email or password.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
     if not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect password. Please try again.",
+            detail="Invalid email or password.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -319,8 +356,23 @@ def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db
             detail="Inactive user account."
         )
 
-    membership = db.query(OrganizationMembership).filter(OrganizationMembership.user_id == user.id).first()
-    if not membership:
+    # Read requested_role from query parameter, header, or form body
+    if not requested_role:
+        requested_role = request.headers.get("X-Requested-Role")
+    if not requested_role:
+        try:
+            form = await request.form()
+            requested_role = form.get("requested_role")
+        except Exception:
+            pass
+
+    memberships = (
+        db.query(OrganizationMembership)
+        .filter(OrganizationMembership.user_id == user.id)
+        .all()
+    )
+
+    if not memberships:
         org = Organization(
             name=f"{user.full_name}'s Workspace",
             slug=f"workspace-{user.id}",
@@ -329,23 +381,67 @@ def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db
         )
         db.add(org)
         db.flush()
-        membership = OrganizationMembership(
+        default_role = OrgRole.STUDENT if requested_role and requested_role.strip().upper() == "STUDENT" else OrgRole.ADMIN
+        m = OrganizationMembership(
             user_id=user.id,
             organization_id=org.id,
-            role=OrgRole.ADMIN
+            role=default_role
         )
-        db.add(membership)
+        db.add(m)
         db.commit()
+        memberships = [m]
+
+    target_membership = None
+
+    if requested_role:
+        req_clean = requested_role.strip().upper()
+        if req_clean == "CANDIDATE":
+            req_clean = "STUDENT"
+
+        ROLE_DISPLAY_NAMES = {
+            "ADMIN": "Administrator",
+            "MENTOR": "Mentor",
+            "RECRUITER": "Recruiter",
+            "STUDENT": "Student",
+            "COUNSELOR": "Counselor"
+        }
+        role_title = ROLE_DISPLAY_NAMES.get(req_clean, req_clean.title())
+
+        # Match against user's actual memberships
+        for m in memberships:
+            m_role_str = m.role.value if hasattr(m.role, "value") else str(m.role).upper()
+            if m_role_str == "CANDIDATE":
+                m_role_str = "STUDENT"
+            if m_role_str == req_clean:
+                target_membership = m
+                break
+
+        # Superuser privilege allows ADMIN role access
+        if not target_membership and req_clean == "ADMIN" and user.is_superuser and memberships:
+            target_membership = memberships[0]
+
+        if not target_membership:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"This account does not have {role_title} access."
+            )
+    else:
+        target_membership = memberships[0]
 
     reset_login_rate_limit(request, username_clean)
 
-    access_token = create_access_token(subject=user.id, org_id=membership.organization_id, role=membership.role.value)
+    role_val = target_membership.role.value if hasattr(target_membership.role, "value") else str(target_membership.role)
+    access_token = create_access_token(
+        subject=user.id,
+        org_id=target_membership.organization_id,
+        role=role_val
+    )
 
     return Token(
         access_token=access_token,
         token_type="bearer",
-        active_org_id=membership.organization_id,
-        user=make_user_response(user, db, active_org_id=membership.organization_id)
+        active_org_id=target_membership.organization_id,
+        user=make_user_response(user, db, active_org_id=target_membership.organization_id)
     )
 
 @router.get("/me", summary="Get Current User Profile & Workspaces")
