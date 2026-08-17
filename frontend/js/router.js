@@ -16,6 +16,7 @@ import { renderProfile, initProfileListeners } from "./views/profile.js";
 import { renderResume, initResumeListeners } from "./views/resume.js";
 import { renderRecommendations, initRecommendationsListeners } from "./views/recommendations.js";
 import { renderMentorView, initMentorListeners } from "./views/mentor.js";
+import { initPasswordToggle } from "./components.js";
 
 import { getCurrentUserRole, isRouteAllowed, ROLE_CONFIG } from "./permissions.js";
 
