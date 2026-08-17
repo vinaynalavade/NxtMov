@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.tenant import get_current_tenant, TenantContext
+from app.core.permissions import require_permission, Permission
 from app.models.application import Submission, SubmissionStatus, Placement, PlacementStatus
 from app.models.candidate import Candidate, CandidateStatus
 from app.models.requirement import JobRequirement
@@ -34,7 +35,7 @@ def list_submissions(
     job_requirement_id: Optional[int] = None,
     candidate_id: Optional[int] = None,
     status_filter: Optional[SubmissionStatus] = Query(None, alias="status"),
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.SUBMISSIONS_VIEW)),
     db: Session = Depends(get_db)
 ):
     query = db.query(Submission).filter(Submission.organization_id == ctx.organization.id)
@@ -52,7 +53,7 @@ def list_submissions(
 @router.post("/submissions", response_model=SubmissionResponse, status_code=status.HTTP_201_CREATED, summary="Submit Candidate for Requirement")
 def create_submission(
     sub_in: SubmissionCreate,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.SUBMISSIONS_MANAGE)),
     db: Session = Depends(get_db)
 ):
     req = db.query(JobRequirement).filter(
@@ -100,7 +101,7 @@ def create_submission(
 def update_submission(
     submission_id: int,
     sub_in: SubmissionUpdate,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.SUBMISSIONS_MANAGE)),
     db: Session = Depends(get_db)
 ):
     submission = db.query(Submission).filter(
@@ -132,7 +133,7 @@ def update_submission(
 
 @router.get("/placements", response_model=List[PlacementResponse], summary="List Consultancy Placements")
 def list_placements(
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.SUBMISSIONS_VIEW)),
     db: Session = Depends(get_db)
 ):
     placements = db.query(Placement).filter(Placement.organization_id == ctx.organization.id).order_by(Placement.id.desc()).all()
@@ -153,7 +154,7 @@ def list_placements(
 @router.post("/placements", response_model=PlacementResponse, status_code=status.HTTP_201_CREATED, summary="Record Placement")
 def create_placement(
     place_in: PlacementCreate,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.SUBMISSIONS_MANAGE)),
     db: Session = Depends(get_db)
 ):
     cand = db.query(Candidate).filter(

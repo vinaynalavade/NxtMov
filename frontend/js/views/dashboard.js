@@ -9,8 +9,10 @@ export function renderDashboard() {
   const user = store.getState().user || { full_name: "User" };
   const firstName = user.full_name ? user.full_name.split(" ")[0] : "User";
 
-  if (role === "ADMIN" || role === "RECRUITER") {
+  if (role === "ADMIN") {
     return renderAdminDashboard(firstName);
+  } else if (role === "RECRUITER") {
+    return renderRecruiterDashboard(firstName);
   } else if (role === "MENTOR" || role === "COUNSELOR") {
     return renderMentorDashboard(firstName);
   }
@@ -118,7 +120,7 @@ function renderStudentDashboard(firstName) {
           </h3>
           <div style="display: flex; flex-direction: column; gap: 0.65rem;">
             <button id="btn-quick-log-hr" class="btn btn-primary" style="justify-content: start; gap: 0.5rem;">
-              ${getIcon("phone", "", 16)} Log HR / Recruiter Interaction
+              ${getIcon("phone", "", 16)} Log Interaction / Call
             </button>
             <a href="#/resume" class="btn btn-outline" style="justify-content: start; gap: 0.5rem;">
               ${getIcon("resume", "", 16)} NxtMov ATS Score & Resume Parser
@@ -137,24 +139,27 @@ function renderStudentDashboard(firstName) {
 }
 
 /* ================================================================
-   2. ADMIN / RECRUITER DASHBOARD
+   2. WORKSPACE ADMINISTRATOR DASHBOARD
    ================================================================ */
 function renderAdminDashboard(firstName) {
   return `
     <div class="dashboard-container">
       <div class="dashboard-header" style="margin-bottom: 1.5rem;">
-        <h1 class="view-title">Recruitment Command Center</h1>
-        <p class="view-subtitle">Monitor candidate pipelines, track client submissions, oversee active job openings, and drive team follow-ups.</p>
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+          <h1 class="view-title" style="margin: 0;">Workspace Command Center</h1>
+          <span class="role-badge badge-admin">Administrator</span>
+        </div>
+        <p class="view-subtitle">Full workspace oversight: Manage team roles, monitor active candidate pipelines, track client submissions, and audit operations.</p>
       </div>
 
-      <!-- Recruitment KPI Grid -->
+      <!-- Admin KPI Grid -->
       <div class="kpi-grid" style="margin-bottom: 1.5rem;">
         <div class="card kpi-card">
           <div class="kpi-title" style="display: flex; align-items: center; gap: 0.35rem;">
-            ${getIcon("candidates", "", 15)} Total Candidates
+            ${getIcon("candidates", "", 15)} Workspace Talent Pool
           </div>
           <div id="kpi-admin-candidates" class="kpi-value" style="color: var(--primary-color);">-</div>
-          <div class="kpi-caption">Active roster talent pool</div>
+          <div class="kpi-caption">Active candidate roster</div>
         </div>
 
         <div class="card kpi-card">
@@ -162,7 +167,7 @@ function renderAdminDashboard(firstName) {
             ${getIcon("opportunities", "", 15)} Open Requirements
           </div>
           <div id="kpi-opportunities" class="kpi-value" style="color: #3B82F6;">-</div>
-          <div class="kpi-caption">Active client mandates</div>
+          <div class="kpi-caption">Client hiring mandates</div>
         </div>
 
         <div class="card kpi-card">
@@ -170,19 +175,19 @@ function renderAdminDashboard(firstName) {
             ${getIcon("submissions", "", 15)} Client Submissions
           </div>
           <div id="kpi-applications" class="kpi-value" style="color: var(--accent-color);">-</div>
-          <div class="kpi-caption">Submissions & interviews</div>
+          <div class="kpi-caption">Pipeline submissions & interviews</div>
         </div>
 
         <div class="card kpi-card">
           <div class="kpi-title" style="display: flex; align-items: center; gap: 0.35rem;">
-            ${getIcon("followups", "", 15)} Follow-ups Due
+            ${getIcon("followups", "", 15)} Scheduled Follow-ups
           </div>
           <div id="kpi-today" class="kpi-value" style="color: var(--warning-color);">-</div>
-          <div class="kpi-caption">Actions scheduled for today</div>
+          <div class="kpi-caption">Workspace tasks due today</div>
         </div>
       </div>
 
-      <!-- Pipeline Stage Breakdown & Quick Actions -->
+      <!-- Pipeline Stages & Admin Controls -->
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem; align-items: start;">
         <div class="card">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
@@ -209,7 +214,95 @@ function renderAdminDashboard(firstName) {
 
         <div class="card">
           <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.4rem;">
-            ${getIcon("rocket", "", 16)} RECRUITMENT QUICK ACTIONS
+            ${getIcon("shield-check", "", 16)} WORKSPACE CONTROLS
+          </h3>
+          <div style="display: flex; flex-direction: column; gap: 0.65rem;">
+            <a href="#/team" class="btn btn-primary" style="justify-content: start; gap: 0.5rem;">
+              ${getIcon("team", "", 16)} Manage Team & Assign Roles
+            </a>
+            <a href="#/opportunities" class="btn btn-outline" style="justify-content: start; gap: 0.5rem;">
+              ${getIcon("opportunities", "", 16)} Manage Job Requirements
+            </a>
+            <a href="#/import" class="btn btn-outline" style="justify-content: start; gap: 0.5rem;">
+              ${getIcon("import", "", 16)} Bulk Import Candidates & Contacts
+            </a>
+            <a href="#/contacts" class="btn btn-outline" style="justify-content: start; gap: 0.5rem;">
+              ${getIcon("contacts", "", 16)} HR Contacts Directory
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Engine Follow-ups -->
+      <div class="card">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+          <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 0.4rem;">
+            ${getIcon("followups", "", 16)} SCHEDULED FOLLOW-UPS & NEXT MOVES
+          </h3>
+          <a href="#/followups" class="btn btn-outline" style="font-size: 0.75rem;">View All</a>
+        </div>
+        <div id="dashboard-followups-list">
+          <p style="color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 1.5rem 0;">Loading action items...</p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/* ================================================================
+   3. RECRUITER / TALENT PARTNER DASHBOARD
+   ================================================================ */
+function renderRecruiterDashboard(firstName) {
+  return `
+    <div class="dashboard-container">
+      <div class="dashboard-header" style="margin-bottom: 1.5rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+          <h1 class="view-title" style="margin: 0;">Recruitment Desk</h1>
+          <span class="role-badge badge-recruiter">Talent Partner</span>
+        </div>
+        <p class="view-subtitle">Candidate sourcing, talent matching, requirement tracking, and employer submissions.</p>
+      </div>
+
+      <!-- Recruiter KPI Grid -->
+      <div class="kpi-grid" style="margin-bottom: 1.5rem;">
+        <div class="card kpi-card">
+          <div class="kpi-title" style="display: flex; align-items: center; gap: 0.35rem;">
+            ${getIcon("candidates", "", 15)} Total Candidates
+          </div>
+          <div id="kpi-admin-candidates" class="kpi-value" style="color: var(--primary-color);">-</div>
+          <div class="kpi-caption">Candidate roster pool</div>
+        </div>
+
+        <div class="card kpi-card">
+          <div class="kpi-title" style="display: flex; align-items: center; gap: 0.35rem;">
+            ${getIcon("opportunities", "", 15)} Open Requirements
+          </div>
+          <div id="kpi-opportunities" class="kpi-value" style="color: #3B82F6;">-</div>
+          <div class="kpi-caption">Active client mandates</div>
+        </div>
+
+        <div class="card kpi-card">
+          <div class="kpi-title" style="display: flex; align-items: center; gap: 0.35rem;">
+            ${getIcon("submissions", "", 15)} Client Submissions
+          </div>
+          <div id="kpi-applications" class="kpi-value" style="color: var(--accent-color);">-</div>
+          <div class="kpi-caption">Submissions & interviews</div>
+        </div>
+
+        <div class="card kpi-card">
+          <div class="kpi-title" style="display: flex; align-items: center; gap: 0.35rem;">
+            ${getIcon("followups", "", 15)} Follow-ups Due
+          </div>
+          <div id="kpi-today" class="kpi-value" style="color: var(--warning-color);">-</div>
+          <div class="kpi-caption">Recruiter actions due today</div>
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem; align-items: start;">
+        <div class="card">
+          <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.4rem;">
+            ${getIcon("rocket", "", 16)} RECRUITER ACTIONS
           </h3>
           <div style="display: flex; flex-direction: column; gap: 0.65rem;">
             <button id="btn-quick-log-hr" class="btn btn-primary" style="justify-content: start; gap: 0.5rem;">
@@ -224,6 +317,29 @@ function renderAdminDashboard(firstName) {
             <a href="#/contacts" class="btn btn-outline" style="justify-content: start; gap: 0.5rem;">
               ${getIcon("contacts", "", 16)} HR Contacts Directory
             </a>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 0.4rem;">
+              ${getIcon("chart", "", 16)} Candidate Pipeline Stages
+            </h3>
+            <a href="#/candidates" class="btn btn-outline" style="font-size: 0.75rem;">View Candidates</a>
+          </div>
+          <div id="admin-pipeline-stages" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem;">
+            <div style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-md); text-align: center;">
+              <div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600;">NEW / SOURCED</div>
+              <div id="pipe-stage-new" style="font-size: 1.25rem; font-weight: 800; color: var(--text-primary); margin-top: 0.2rem;">-</div>
+            </div>
+            <div style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-md); text-align: center;">
+              <div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600;">SCREENING</div>
+              <div id="pipe-stage-screen" style="font-size: 1.25rem; font-weight: 800; color: var(--primary-color); margin-top: 0.2rem;">-</div>
+            </div>
+            <div style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-md); text-align: center;">
+              <div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600;">INTERVIEWING</div>
+              <div id="pipe-stage-interview" style="font-size: 1.25rem; font-weight: 800; color: var(--accent-color); margin-top: 0.2rem;">-</div>
+            </div>
           </div>
         </div>
       </div>

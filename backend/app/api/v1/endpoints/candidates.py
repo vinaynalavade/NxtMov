@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 from app.core.database import get_db
 from app.core.tenant import get_current_tenant, TenantContext
+from app.core.permissions import require_permission, Permission
 from app.models.candidate import Candidate, CandidateStatus, Document, DocumentType
 from app.models.user import User
 from app.models.application import Application, Submission
@@ -42,7 +43,7 @@ def list_candidates(
     assigned_recruiter_id: Optional[int] = None,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.CANDIDATES_VIEW)),
     db: Session = Depends(get_db)
 ):
     query = db.query(Candidate).filter(Candidate.organization_id == ctx.organization.id)
@@ -88,7 +89,7 @@ def list_candidates(
 @router.post("", response_model=CandidateResponse, status_code=status.HTTP_201_CREATED, summary="Create Managed Candidate")
 def create_candidate(
     cand_in: CandidateCreate,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.CANDIDATES_MANAGE)),
     db: Session = Depends(get_db)
 ):
     existing = db.query(Candidate).filter(
@@ -110,7 +111,7 @@ def create_candidate(
 @router.get("/{candidate_id}", response_model=CandidateResponse, summary="Get Candidate Detail")
 def get_candidate(
     candidate_id: int,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.CANDIDATES_VIEW)),
     db: Session = Depends(get_db)
 ):
     candidate = db.query(Candidate).filter(
@@ -125,7 +126,7 @@ def get_candidate(
 def update_candidate(
     candidate_id: int,
     cand_in: CandidateUpdate,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.CANDIDATES_MANAGE)),
     db: Session = Depends(get_db)
 ):
     candidate = db.query(Candidate).filter(
@@ -147,7 +148,7 @@ def update_candidate(
 def assign_candidate(
     candidate_id: int,
     assign_in: CandidateAssign,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.CANDIDATES_ASSIGN)),
     db: Session = Depends(get_db)
 ):
     candidate = db.query(Candidate).filter(
@@ -169,7 +170,7 @@ def assign_candidate(
 @router.get("/{candidate_id}/profile", summary="Get Complete Candidate 360 View")
 def get_candidate_full_profile(
     candidate_id: int,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.CANDIDATES_VIEW)),
     db: Session = Depends(get_db)
 ):
     candidate = db.query(Candidate).filter(
@@ -186,8 +187,7 @@ def get_candidate_full_profile(
     return {
         "candidate": _enrich_candidate_response(candidate, db),
         "applications_count": len(applications),
-        # pyrefly: ignore [unknown-name]
-        "submissions_count": lensubmissions if 'lensubmissions' in locals() else len(submissions),
+        "submissions_count": len(submissions),
         "submissions": [
             {
                 "id": s.id,
@@ -204,7 +204,7 @@ def get_candidate_full_profile(
 def add_candidate_document(
     candidate_id: int,
     doc_in: DocumentCreate,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.CANDIDATES_MANAGE)),
     db: Session = Depends(get_db)
 ):
     candidate = db.query(Candidate).filter(
@@ -235,7 +235,7 @@ def add_candidate_document(
 def get_candidate_job_matches(
     candidate_id: int,
     limit: int = Query(20, ge=1, le=100),
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.CANDIDATES_VIEW)),
     db: Session = Depends(get_db)
 ):
     from app.models.requirement import JobRequirement

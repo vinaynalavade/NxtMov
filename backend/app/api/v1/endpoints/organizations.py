@@ -9,8 +9,9 @@ from app.models.user import User
 from app.models.organization import Organization, OrganizationMembership, OrgType, OrgRole, Invitation, InvitationStatus
 from app.schemas.organization import (
     OrganizationCreate, OrganizationResponse, TeamMemberResponse,
-    InvitationCreate, InvitationResponse, InvitationAccept
+    InvitationCreate, InvitationResponse, InvitationAccept, MemberRoleUpdateRequest
 )
+from app.core.permissions import require_role, require_permission, Permission
 
 router = APIRouter()
 
@@ -23,6 +24,8 @@ def list_my_workspaces(
     org_responses = []
     for m in memberships:
         org = m.organization
+        if not org:
+            continue
         org_responses.append(OrganizationResponse(
             id=org.id,
             name=org.name,
@@ -81,7 +84,7 @@ def create_consultancy_organization(
 
 @router.get("/team", response_model=List[TeamMemberResponse], summary="List Team Members")
 def list_team_members(
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.USERS_VIEW)),
     db: Session = Depends(get_db)
 ):
     memberships = db.query(OrganizationMembership).filter(
@@ -91,6 +94,8 @@ def list_team_members(
     team = []
     for m in memberships:
         u = m.user
+        if not u:
+            continue
         team.append(TeamMemberResponse(
             membership_id=m.id,
             user_id=u.id,
@@ -101,16 +106,83 @@ def list_team_members(
         ))
     return team
 
+@router.put("/members/{user_id}/role", response_model=TeamMemberResponse, summary="Update Member Role in Workspace")
+def update_member_role(
+    user_id: int,
+    role_in: MemberRoleUpdateRequest,
+    ctx: TenantContext = Depends(require_permission(Permission.ROLES_MANAGE)),
+    db: Session = Depends(get_db)
+):
+    membership = db.query(OrganizationMembership).filter(
+        OrganizationMembership.organization_id == ctx.organization.id,
+        OrganizationMembership.user_id == user_id
+    ).first()
+
+    if not membership:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found in this workspace.")
+
+    # Last-admin protection: If changing an existing ADMIN to a non-ADMIN role, verify another ADMIN exists
+    if membership.role == OrgRole.ADMIN and role_in.role != OrgRole.ADMIN:
+        admin_count = db.query(OrganizationMembership).filter(
+            OrganizationMembership.organization_id == ctx.organization.id,
+            OrganizationMembership.role == OrgRole.ADMIN
+        ).count()
+        if admin_count <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot demote the last Administrator of this workspace. Assign another Administrator first."
+            )
+
+    membership.role = role_in.role
+    db.commit()
+    db.refresh(membership)
+
+    u = membership.user
+    return TeamMemberResponse(
+        membership_id=membership.id,
+        user_id=u.id,
+        full_name=u.full_name,
+        email=u.email,
+        role=membership.role,
+        joined_at=membership.created_at
+    )
+
+@router.delete("/members/{user_id}", summary="Remove Member from Workspace")
+def remove_member(
+    user_id: int,
+    ctx: TenantContext = Depends(require_permission(Permission.USERS_MANAGE)),
+    db: Session = Depends(get_db)
+):
+    membership = db.query(OrganizationMembership).filter(
+        OrganizationMembership.organization_id == ctx.organization.id,
+        OrganizationMembership.user_id == user_id
+    ).first()
+
+    if not membership:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found in this workspace.")
+
+    # Last-admin protection: cannot remove the last admin
+    if membership.role == OrgRole.ADMIN:
+        admin_count = db.query(OrganizationMembership).filter(
+            OrganizationMembership.organization_id == ctx.organization.id,
+            OrganizationMembership.role == OrgRole.ADMIN
+        ).count()
+        if admin_count <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot remove the last Administrator of this workspace. Assign another Administrator first."
+            )
+
+    db.delete(membership)
+    db.commit()
+    return {"message": "Member removed from workspace successfully."}
+
 @router.post("/invitations", response_model=InvitationResponse, status_code=status.HTTP_201_CREATED, summary="Invite Team Member")
 def invite_team_member(
     inv_in: InvitationCreate,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.USERS_MANAGE)),
     db: Session = Depends(get_db)
 ):
-    # RBAC Check: Only ADMIN can invite members
-    if ctx.role != OrgRole.ADMIN:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only Organization Admins can invite team members.")
-
     token = secrets.token_urlsafe(32)
     expires_at = datetime.now(timezone.utc) + timedelta(days=7)
 
@@ -131,7 +203,7 @@ def invite_team_member(
 
 @router.get("/invitations", response_model=List[InvitationResponse], summary="List Active Invitations")
 def list_invitations(
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.USERS_VIEW)),
     db: Session = Depends(get_db)
 ):
     return db.query(Invitation).filter(
@@ -173,6 +245,8 @@ def accept_invitation(
             role=invitation.role
         )
         db.add(membership)
+    else:
+        existing.role = invitation.role
 
     invitation.status = InvitationStatus.ACCEPTED
     db.commit()
@@ -182,12 +256,9 @@ def accept_invitation(
 @router.delete("/invitations/{invitation_id}", summary="Revoke Invitation")
 def revoke_invitation(
     invitation_id: int,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.USERS_MANAGE)),
     db: Session = Depends(get_db)
 ):
-    if ctx.role != OrgRole.ADMIN:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only Admins can revoke invitations.")
-
     invitation = db.query(Invitation).filter(
         Invitation.id == invitation_id,
         Invitation.organization_id == ctx.organization.id

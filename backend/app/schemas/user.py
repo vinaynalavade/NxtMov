@@ -1,6 +1,19 @@
 from typing import Optional, List
 from pydantic import BaseModel, EmailStr, ConfigDict
 
+class ActiveOrgInfo(BaseModel):
+    id: int
+    name: str
+    role: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+class UserRoleInfo(BaseModel):
+    organization_id: int
+    role: str
+
+    model_config = ConfigDict(from_attributes=True)
+
 class UserBase(BaseModel):
     email: str
     full_name: str
@@ -20,6 +33,9 @@ class UserResponse(UserBase):
     is_superuser: bool
     is_email_verified: bool = False
     is_phone_verified: bool = False
+    active_organization: Optional[ActiveOrgInfo] = None
+    roles: List[UserRoleInfo] = []
+    permissions: List[str] = []
 
     model_config = ConfigDict(from_attributes=True)
 

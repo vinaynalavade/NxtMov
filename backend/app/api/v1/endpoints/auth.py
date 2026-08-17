@@ -135,11 +135,51 @@ def ensure_demo_user_exists(db: Session):
         except Exception as e:
             db.rollback()
 
-def make_user_response(user: User, db: Session) -> UserResponse:
+from app.schemas.user import (
+    UserCreate, UserResponse, Token, ActiveOrgInfo, UserRoleInfo,
+    EmailVerifyRequest, EmailVerifyConfirm,
+    PhoneOTPRequest, PhoneOTPConfirm,
+    ForgotPasswordRequest, ResetPasswordRequest
+)
+from app.core.permissions import get_role_permissions
+
+def make_user_response(user: User, db: Session, active_org_id: Optional[int] = None) -> UserResponse:
     u = UserResponse.model_validate(user)
     profile = db.query(StudentProfile).filter(StudentProfile.user_id == user.id).first()
     if profile and profile.avatar_url:
         u.avatar_url = profile.avatar_url
+
+    memberships = (
+        db.query(OrganizationMembership)
+        .filter(OrganizationMembership.user_id == user.id)
+        .all()
+    )
+
+    roles_list = []
+    active_org_info = None
+    resolved_role = "STUDENT"
+
+    for m in memberships:
+        r_str = m.role.value if hasattr(m.role, "value") else str(m.role)
+        roles_list.append(UserRoleInfo(organization_id=m.organization_id, role=r_str))
+        if active_org_id and m.organization_id == active_org_id and m.organization:
+            active_org_info = ActiveOrgInfo(
+                id=m.organization.id,
+                name=m.organization.name,
+                role=r_str
+            )
+            resolved_role = r_str
+        elif not active_org_info and m.organization:
+            active_org_info = ActiveOrgInfo(
+                id=m.organization.id,
+                name=m.organization.name,
+                role=r_str
+            )
+            resolved_role = r_str
+
+    u.roles = roles_list
+    u.active_organization = active_org_info
+    u.permissions = get_role_permissions(resolved_role)
     return u
 
 @router.get("/config", summary="Get Public Authentication Configuration")
@@ -246,7 +286,7 @@ def register(request: Request, user_in: UserCreate, db: Session = Depends(get_db
         access_token=access_token,
         token_type="bearer",
         active_org_id=personal_org.id,
-        user=make_user_response(user, db)
+        user=make_user_response(user, db, active_org_id=personal_org.id)
     )
 
 @router.post("/login", response_model=Token, summary="User Login")
@@ -305,17 +345,27 @@ def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db
         access_token=access_token,
         token_type="bearer",
         active_org_id=membership.organization_id,
-        user=make_user_response(user, db)
+        user=make_user_response(user, db, active_org_id=membership.organization_id)
     )
 
 @router.get("/me", summary="Get Current User Profile & Workspaces")
-def get_me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_me(request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     memberships = (
         db.query(OrganizationMembership)
         .filter(OrganizationMembership.user_id == user.id)
         .all()
     )
     org_list = []
+    active_org_id = None
+
+    # Try getting active org from token header if present
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        from app.core.security import decode_access_token
+        payload = decode_access_token(auth_header[7:].strip())
+        if payload:
+            active_org_id = payload.get("org_id")
+
     for m in memberships:
         if not m.organization:
             continue
@@ -325,8 +375,11 @@ def get_me(user: User = Depends(get_current_user), db: Session = Depends(get_db)
         org_dict["role"] = role_str
         org_list.append(org_dict)
 
+    if not active_org_id and memberships:
+        active_org_id = memberships[0].organization_id
+
     return {
-        "user": make_user_response(user, db),
+        "user": make_user_response(user, db, active_org_id=active_org_id),
         "organizations": org_list
     }
 
@@ -361,7 +414,7 @@ def switch_workspace(
         access_token=access_token,
         token_type="bearer",
         active_org_id=membership.organization_id,
-        user=make_user_response(user, db)
+        user=make_user_response(user, db, active_org_id=membership.organization_id)
     )
 
 # ==============================================================================

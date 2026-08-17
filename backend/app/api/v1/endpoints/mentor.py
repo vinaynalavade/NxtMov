@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.tenant import get_current_tenant, TenantContext
+from app.core.permissions import require_role, Permission
 from app.models.organization import OrgRole
 from app.models.candidate import Candidate
 from app.models.student_profile import StudentProfile
@@ -16,15 +17,15 @@ router = APIRouter()
 
 @router.get("/students", summary="Get Authorized Students for Mentor Dashboard")
 def get_mentor_students(
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_role(OrgRole.ADMIN, OrgRole.MENTOR, OrgRole.COUNSELOR, OrgRole.RECRUITER)),
     db: Session = Depends(get_db)
 ):
-    role_str = ctx.role.value if hasattr(ctx.role, "value") else str(ctx.role)
+    role_str = ctx.role.value if hasattr(ctx.role, "value") else str(ctx.role).upper()
 
     # Mentors can view candidates where they are assigned as counselor/recruiter, or all org candidates if admin/counselor/recruiter
     query = db.query(Candidate).filter(Candidate.organization_id == ctx.organization.id)
-    if role_str not in ["ADMIN", "COUNSELOR", "RECRUITER"]:
-        # Filter assigned
+    if role_str == "MENTOR":
+        # Strictly filter assigned students for mentors
         query = query.filter(
             (Candidate.assigned_counselor_id == ctx.user.id) |
             (Candidate.assigned_recruiter_id == ctx.user.id) |
@@ -86,16 +87,24 @@ def get_mentor_students(
 @router.get("/students/{id}/journey", summary="Get Complete Recruitment Journey & Timeline for Student")
 def get_student_journey(
     id: int,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_role(OrgRole.ADMIN, OrgRole.MENTOR, OrgRole.COUNSELOR, OrgRole.RECRUITER)),
     db: Session = Depends(get_db)
 ):
-    cand = db.query(Candidate).filter(
+    cand_query = db.query(Candidate).filter(
         Candidate.organization_id == ctx.organization.id,
         Candidate.id == id
-    ).first()
+    )
+    role_str = ctx.role.value if hasattr(ctx.role, "value") else str(ctx.role).upper()
+    if role_str == "MENTOR" and not ctx.user.is_superuser:
+        cand_query = cand_query.filter(
+            (Candidate.assigned_counselor_id == ctx.user.id) |
+            (Candidate.assigned_recruiter_id == ctx.user.id) |
+            (Candidate.user_id == ctx.user.id)
+        )
 
+    cand = cand_query.first()
     if not cand:
-        raise HTTPException(status_code=404, detail="Candidate student not found.")
+        raise HTTPException(status_code=404, detail="Candidate student not found or access not permitted.")
 
     profile = db.query(StudentProfile).filter(StudentProfile.candidate_id == cand.id).first()
     resumes = db.query(Resume).filter(Resume.candidate_id == cand.id).order_by(Resume.id.desc()).all()

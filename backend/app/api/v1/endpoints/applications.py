@@ -11,6 +11,9 @@ from app.schemas.application import (
     InterviewCreate, InterviewResponse
 )
 
+from app.core.permissions import require_permission, require_role, Permission
+from app.models.organization import OrgRole
+
 router = APIRouter()
 
 @router.get("", response_model=List[ApplicationResponse], summary="List Applications in Workspace")
@@ -23,6 +26,14 @@ def list_applications(
     db: Session = Depends(get_db)
 ):
     query = db.query(Application).filter(Application.organization_id == ctx.organization.id)
+    role_str = ctx.role.value if hasattr(ctx.role, "value") else str(ctx.role).upper()
+
+    # If student role and not superuser, strictly filter to own applications
+    if role_str in ["STUDENT", "CANDIDATE"] and not ctx.user.is_superuser:
+        query = query.join(Candidate).filter(
+            (Candidate.user_id == ctx.user.id) | (Candidate.email == ctx.user.email)
+        )
+
     if stage:
         query = query.filter(Application.stage == stage)
     if job_requirement_id:
@@ -46,16 +57,17 @@ def create_application(
     if not req:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job Requirement not found.")
 
-    # Resolve candidate ID: Use provided candidate_id or fallback to user's personal candidate profile
-    candidate_id = app_in.candidate_id
-    if not candidate_id:
+    role_str = ctx.role.value if hasattr(ctx.role, "value") else str(ctx.role).upper()
+
+    # Resolve candidate ID:
+    # If Student, always use authenticated user's candidate record (prevent submitting as another candidate)
+    if role_str in ["STUDENT", "CANDIDATE"]:
         cand = (
             db.query(Candidate)
-            .filter(Candidate.organization_id == ctx.organization.id, Candidate.user_id == ctx.user.id)
+            .filter(Candidate.organization_id == ctx.organization.id, (Candidate.user_id == ctx.user.id) | (Candidate.email == ctx.user.email))
             .first()
         )
         if not cand:
-            # Fallback create
             cand = Candidate(
                 organization_id=ctx.organization.id,
                 user_id=ctx.user.id,
@@ -66,6 +78,26 @@ def create_application(
             db.add(cand)
             db.flush()
         candidate_id = cand.id
+    else:
+        # Admin / Recruiter
+        candidate_id = app_in.candidate_id
+        if not candidate_id:
+            cand = (
+                db.query(Candidate)
+                .filter(Candidate.organization_id == ctx.organization.id, Candidate.user_id == ctx.user.id)
+                .first()
+            )
+            if not cand:
+                cand = Candidate(
+                    organization_id=ctx.organization.id,
+                    user_id=ctx.user.id,
+                    full_name=ctx.user.full_name,
+                    email=ctx.user.email,
+                    phone=ctx.user.phone
+                )
+                db.add(cand)
+                db.flush()
+            candidate_id = cand.id
 
     # Check if application already exists for this requirement and candidate
     existing = (
@@ -99,11 +131,13 @@ def update_application(
     ctx: TenantContext = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    app_obj = (
-        db.query(Application)
-        .filter(Application.id == application_id, Application.organization_id == ctx.organization.id)
-        .first()
-    )
+    query = db.query(Application).filter(Application.id == application_id, Application.organization_id == ctx.organization.id)
+    role_str = ctx.role.value if hasattr(ctx.role, "value") else str(ctx.role).upper()
+
+    if role_str in ["STUDENT", "CANDIDATE"] and not ctx.user.is_superuser:
+        query = query.join(Candidate).filter((Candidate.user_id == ctx.user.id) | (Candidate.email == ctx.user.email))
+
+    app_obj = query.first()
     if not app_obj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found.")
 
@@ -119,7 +153,7 @@ def update_application(
 def schedule_interview(
     application_id: int,
     interview_in: InterviewCreate,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.APPLICATIONS_MANAGE)),
     db: Session = Depends(get_db)
 ):
     app_obj = (

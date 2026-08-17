@@ -17,7 +17,7 @@ import { renderResume, initResumeListeners } from "./views/resume.js";
 import { renderRecommendations, initRecommendationsListeners } from "./views/recommendations.js";
 import { renderMentorView, initMentorListeners } from "./views/mentor.js";
 
-import { initPasswordToggle } from "./components.js";
+import { getCurrentUserRole, isRouteAllowed, ROLE_CONFIG } from "./permissions.js";
 
 const routes = {
   "/login": { render: renderLogin, init: initLoginListeners, public: true },
@@ -43,6 +43,36 @@ export class Router {
   static init() {
     window.addEventListener("hashchange", () => this.handleRoute());
     this.handleRoute();
+  }
+
+  static renderAccessRestricted(container, hash, userRole) {
+    const roleMeta = ROLE_CONFIG[userRole] || ROLE_CONFIG.STUDENT;
+    const state = store.getState();
+    const activeOrgName = state.user?.active_organization?.name || "Current Workspace";
+
+    container.innerHTML = `
+      <div class="card access-restricted-card" style="max-width: 580px; margin: 3.5rem auto; text-align: center; padding: 2.5rem 2rem; border-top: 4px solid var(--accent-primary);">
+        <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(239, 68, 68, 0.1); color: #ef4444; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.25rem auto;">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </div>
+        <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.5rem;">Access Restricted</h2>
+        <p style="color: var(--text-secondary); font-size: 0.95rem; line-height: 1.5; margin-bottom: 1.5rem;">
+          Your current active role (<strong class="role-badge ${roleMeta.badgeClass}">${roleMeta.title}</strong>) in <strong>${activeOrgName}</strong> does not have permission to view the <code>${hash}</code> page.
+        </p>
+        <div style="background: var(--bg-secondary); border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; text-align: left; font-size: 0.85rem; color: var(--text-muted);">
+          <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem;">Role Capabilities:</div>
+          ${roleMeta.description}
+        </div>
+        <div style="display: flex; justify-content: center; gap: 0.75rem; flex-wrap: wrap;">
+          <button onclick="window.location.hash='#/dashboard'" class="btn btn-primary">
+            Return to Dashboard
+          </button>
+        </div>
+      </div>
+    `;
   }
 
   static handleRoute() {
@@ -76,6 +106,15 @@ export class Router {
 
     const mainContent = document.getElementById("main-content");
     if (mainContent) {
+      const userRole = getCurrentUserRole(store);
+
+      // Check role permissions for the target route
+      if (!route.public && !isRouteAllowed(hash, userRole)) {
+        this.renderAccessRestricted(mainContent, hash, userRole);
+        this.updateActiveNav(hash);
+        return;
+      }
+
       try {
         if (route.isDynamic) {
           route.render(mainContent);

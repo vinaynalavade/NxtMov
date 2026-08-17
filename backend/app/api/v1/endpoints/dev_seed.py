@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.tenant import get_current_tenant, TenantContext
+from app.core.permissions import require_permission, Permission
 from app.models.company import Company, Contact, ContactStatus
 from app.models.requirement import JobRequirement, EmploymentType, RequirementStatus
 from app.models.activity import Call, Followup, CallType, CallOutcome, FollowupStatus, FollowupPriority, EntityType
@@ -47,7 +48,7 @@ SKILLS_LIST = ["Python, FastAPI, Pytest, Docker", "Java, Spring Boot, Microservi
 
 @router.post("/seed", summary="Generate Realistic Development Seed Data")
 def generate_seed_data(
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.ORGANIZATION_SETTINGS)),
     db: Session = Depends(get_db)
 ):
     now = datetime.now(timezone.utc)

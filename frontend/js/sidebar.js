@@ -1,77 +1,73 @@
 import { store } from "./store.js";
 import { api, getAuthenticatedFileUrl } from "./api.js";
 import { getIcon } from "./icons.js";
+import { getCurrentUserRole, ROLE_CONFIG } from "./permissions.js";
 
 /* ================================================================
    Navigation Schema — Single source of truth for all sidebar links
    ================================================================ */
 const NAVIGATION_SCHEMA = [
   {
-    category: "WORKSPACE",
+    category: "OVERVIEW",
     roles: ["STUDENT", "MENTOR", "COUNSELOR", "RECRUITER", "ADMIN"],
     items: [
       { path: "/dashboard", label: "Dashboard", icon: "dashboard" }
     ]
   },
   {
-    category: "TALENT ECOSYSTEM",
+    category: "CAREER & ATS",
     roles: ["STUDENT", "ADMIN"],
     items: [
       { path: "/profile", label: "My Profile", icon: "profile" },
       { path: "/resume", label: "Resume & ATS", icon: "resume" },
       { path: "/recommendations", label: "Role Matches", icon: "recommendations" },
       { path: "/applications", label: "My Applications", icon: "applications" },
-      { path: "/opportunities", label: "Requirements", icon: "opportunities" }
+      { path: "/opportunities", label: "Job Openings", icon: "opportunities" }
     ]
   },
   {
-    category: "RECRUITMENT & CRM",
-    roles: ["ADMIN", "RECRUITER", "COUNSELOR", "MENTOR"],
+    category: "MENTORSHIP",
+    roles: ["MENTOR", "COUNSELOR"],
     items: [
-      { path: "/candidates", label: "Candidates Roster", icon: "candidates" },
+      { path: "/mentor", label: "My Students", icon: "mentor" },
+      { path: "/opportunities", label: "Job Openings", icon: "opportunities" },
+      { path: "/applications", label: "Applications Pipeline", icon: "applications" }
+    ]
+  },
+  {
+    category: "RECRUITMENT DESK",
+    roles: ["RECRUITER", "ADMIN", "COUNSELOR"],
+    items: [
+      { path: "/candidates", label: "Candidate Roster", icon: "candidates" },
       { path: "/opportunities", label: "Job Openings", icon: "opportunities" },
       { path: "/applications", label: "Applications Pipeline", icon: "applications" },
-      { path: "/submissions", label: "Client Submissions", icon: "submissions" },
+      { path: "/submissions", label: "Client Submissions", icon: "submissions" }
+    ]
+  },
+  {
+    category: "EMPLOYER CRM",
+    roles: ["RECRUITER", "ADMIN", "COUNSELOR"],
+    items: [
+      { path: "/companies", label: "Companies", icon: "companies" },
       { path: "/contacts", label: "HR Contacts", icon: "contacts" },
       { path: "/followups", label: "Follow-ups", icon: "followups" }
     ]
   },
   {
-    category: "MENTORSHIP & JOURNEY",
-    roles: ["MENTOR", "COUNSELOR", "ADMIN"],
+    category: "WORKSPACE & TEAM",
+    roles: ["ADMIN"],
     items: [
-      { path: "/mentor", label: "My Students", icon: "mentor" }
-    ]
-  },
-  {
-    category: "DATA & SYSTEM",
-    roles: ["ADMIN", "RECRUITER"],
-    items: [
-      { path: "/companies", label: "Companies", icon: "companies" },
-      { path: "/import", label: "Importer", icon: "import" },
-      { path: "/team", label: "Team & Workspaces", icon: "team" }
+      { path: "/team", label: "Team & Workspaces", icon: "team" },
+      { path: "/import", label: "Data Importer", icon: "import" }
     ]
   }
 ];
 
 /* ================================================================
-   Role Detection
+   Role Detection Helper
    ================================================================ */
 export function getUserRole() {
-  const state = store.getState();
-  const user = state.user;
-  const orgs = state.organizations || [];
-  const activeOrgId = state.activeOrgId;
-
-  if (!user) return "PUBLIC";
-
-  const activeOrg = orgs.find(o => o.id === activeOrgId) || orgs[0];
-  if (activeOrg && activeOrg.role) {
-    const r = typeof activeOrg.role === "string" ? activeOrg.role : activeOrg.role.value;
-    return r ? r.toUpperCase() : "STUDENT";
-  }
-
-  return user.role ? user.role.toUpperCase() : "STUDENT";
+  return getCurrentUserRole(store);
 }
 
 /* ================================================================
@@ -165,7 +161,7 @@ export function renderSidebarNav() {
 
   let html = "";
   NAVIGATION_SCHEMA.forEach(group => {
-    const isVisibleGroup = group.roles.includes(role) || role === "ADMIN";
+    const isVisibleGroup = group.roles.includes(role);
     if (!isVisibleGroup) return;
 
     html += `<div class="sidebar-category-title">${group.category}</div>`;
@@ -232,6 +228,7 @@ export function renderSidebarUserProfile() {
   const state = store.getState();
   const user = state.user;
   const role = getUserRole();
+  const roleMeta = ROLE_CONFIG[role] || ROLE_CONFIG.STUDENT;
 
   const nameEl = document.getElementById("sidebar-user-name");
   const roleEl = document.getElementById("sidebar-user-role");
@@ -239,7 +236,10 @@ export function renderSidebarUserProfile() {
 
   if (user) {
     if (nameEl) nameEl.textContent = user.full_name || user.email;
-    if (roleEl) roleEl.textContent = role;
+    if (roleEl) {
+      const activeOrgName = user.active_organization?.name || "Personal";
+      roleEl.innerHTML = `<span class="role-badge ${roleMeta.badgeClass}">${roleMeta.title}</span>`;
+    }
     if (avatarEl) {
       const avatarUrl = user.avatar_url || state.profile?.avatar_url;
       if (avatarUrl) {

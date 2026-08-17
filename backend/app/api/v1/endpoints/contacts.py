@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from app.core.database import get_db
 from app.core.tenant import get_current_tenant, TenantContext
+from app.core.permissions import require_permission, Permission
 from app.models.company import Company, Contact, ContactStatus
 from app.models.activity import Call, Followup, FollowupStatus, EntityType
 from app.models.requirement import JobRequirement, RequirementStatus
@@ -51,7 +52,7 @@ def _enrich_contact(contact: Contact, db: Session) -> ContactResponse:
         opp_filter.append(or_(JobRequirement.contact_id == contact.id, JobRequirement.company_id == contact.company_id))
     else:
         opp_filter.append(JobRequirement.contact_id == contact.id)
-        
+
     opp_filter.append(JobRequirement.status.in_([
         RequirementStatus.OPEN, RequirementStatus.NEW, RequirementStatus.INTERESTED,
         RequirementStatus.APPLIED, RequirementStatus.INTERVIEWING, RequirementStatus.OFFER
@@ -77,14 +78,14 @@ def list_contacts(
     has_opportunity: Optional[bool] = Query(None, description="Filter contacts with active opportunities"),
     skip: int = 0,
     limit: int = 100,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.CONTACTS_VIEW)),
     db: Session = Depends(get_db)
 ):
     query = db.query(Contact).filter(Contact.organization_id == ctx.organization.id)
-    
+
     if company_id:
         query = query.filter(Contact.company_id == company_id)
-        
+
     if status:
         query = query.filter(Contact.status == status)
 
@@ -118,7 +119,7 @@ def list_contacts(
 @router.post("", response_model=ContactResponse, status_code=status.HTTP_201_CREATED, summary="Create HR Contact")
 def create_contact(
     contact_in: ContactCreate,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.CONTACTS_MANAGE)),
     db: Session = Depends(get_db)
 ):
     company_id = contact_in.company_id
@@ -164,7 +165,7 @@ def create_contact(
 @router.get("/{contact_id}", response_model=ContactResponse, summary="Get Contact Detail")
 def get_contact(
     contact_id: int,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.CONTACTS_VIEW)),
     db: Session = Depends(get_db)
 ):
     contact = (
@@ -179,7 +180,7 @@ def get_contact(
 @router.get("/{contact_id}/timeline", summary="Get Contact 360 View & Timeline")
 def get_contact_timeline(
     contact_id: int,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.CONTACTS_VIEW)),
     db: Session = Depends(get_db)
 ):
     contact = (
@@ -222,12 +223,12 @@ def get_contact_timeline(
     )
 
     timeline_events = []
-    
+
     for c in calls:
         timeline_events.append({
             "type": "CALL",
             "timestamp": c.called_at,
-            "title": f"📞 Call ({c.call_type.value})",
+            "title": f"ðŸ“ž Call ({c.call_type.value})",
             "outcome": c.outcome.value,
             "notes": c.notes,
             "duration": c.duration_minutes,
@@ -238,7 +239,7 @@ def get_contact_timeline(
         timeline_events.append({
             "type": "FOLLOWUP",
             "timestamp": f.due_date,
-            "title": f"⚡ Next Move: {f.title}",
+            "title": f"âš¡ Next Move: {f.title}",
             "status": f.status.value,
             "priority": f.priority.value,
             "description": f.description,
@@ -250,7 +251,7 @@ def get_contact_timeline(
         timeline_events.append({
             "type": "OPPORTUNITY",
             "timestamp": o.created_at,
-            "title": f"💼 Opportunity: {o.title}",
+            "title": f"ðŸ’¼ Opportunity: {o.title}",
             "status": o.status.value,
             "location": o.location,
             "employment_type": o.employment_type.value,
@@ -273,7 +274,7 @@ def get_contact_timeline(
 def update_contact(
     contact_id: int,
     contact_in: ContactUpdate,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.CONTACTS_MANAGE)),
     db: Session = Depends(get_db)
 ):
     contact = (
@@ -295,7 +296,7 @@ def update_contact(
 @router.delete("/{contact_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete HR Contact")
 def delete_contact(
     contact_id: int,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.CONTACTS_MANAGE)),
     db: Session = Depends(get_db)
 ):
     contact = (
@@ -309,4 +310,3 @@ def delete_contact(
     db.delete(contact)
     db.commit()
     return None
-

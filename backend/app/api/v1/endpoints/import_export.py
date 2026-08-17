@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from app.core.database import get_db
 from app.core.tenant import get_current_tenant, TenantContext
+from app.core.permissions import require_any_permission, Permission
 from app.models.company import Company, Contact, ContactStatus
 from app.models.candidate import Candidate, CandidateStatus
 from app.schemas.import_export import (
@@ -58,25 +59,28 @@ HR_SYNONYMS = {
 
 CANDIDATE_SYNONYMS = {
     "name": [
-        "student name", "candidate name", "full name", "applicant name", "name", "person name"
+        "student name", "candidate name", "full name", "applicant name", "name", "person name", "candidate"
     ],
     "email": [
-        "email", "email address", "email id", "contact email", "mail"
+        "email", "email address", "email id", "contact email", "mail", "candidate email"
     ],
     "phone": [
-        "phone", "mobile", "contact no", "mobile no", "phone number", "contact number", "cell"
+        "phone", "mobile", "contact no", "mobile no", "phone number", "contact number", "cell", "telephone"
+    ],
+    "current_title": [
+        "current title", "designation", "role", "current role", "job title", "title", "profile"
     ],
     "primary_skills": [
         "technical skills", "skills", "primary skills", "key skills", "technologies", "tech stack"
     ],
     "experience_years": [
-        "experience", "total exp", "relevant exp", "exp (yrs)", "exp", "years of experience"
+        "experience", "total exp", "relevant exp", "exp (yrs)", "exp", "years of experience", "yoe", "experience years"
     ],
     "location": [
-        "location", "city", "current location", "address"
+        "location", "city", "current location", "address", "state"
     ],
     "current_company": [
-        "current company", "employer", "organization", "company"
+        "current company", "employer", "organization", "company", "current employer"
     ],
     "notice_period_days": [
         "notice period", "notice period (days)", "notice"
@@ -86,6 +90,9 @@ CANDIDATE_SYNONYMS = {
     ],
     "current_salary": [
         "current ctc", "current salary"
+    ],
+    "notes": [
+        "notes", "remarks", "comments", "summary", "about"
     ]
 }
 
@@ -400,7 +407,7 @@ async def preview_import(
 @router.post("/confirm", response_model=ImportResultResponse, summary="Confirm & Execute Batch Import")
 def confirm_import(
     req: ImportConfirmRequest,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_any_permission(Permission.CONTACTS_MANAGE, Permission.CANDIDATES_MANAGE)),
     db: Session = Depends(get_db)
 ):
     saved_path = os.path.join(UPLOAD_TMP_DIR, req.file_token)

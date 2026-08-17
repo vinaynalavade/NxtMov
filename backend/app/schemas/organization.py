@@ -55,3 +55,6 @@ class InvitationAccept(BaseModel):
 
 class WorkspaceSwitchRequest(BaseModel):
     organization_id: int
+
+class MemberRoleUpdateRequest(BaseModel):
+    role: OrgRole

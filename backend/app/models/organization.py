@@ -15,9 +15,11 @@ class OrgType(str, enum.Enum):
 
 class OrgRole(str, enum.Enum):
     ADMIN = "ADMIN"
+    MENTOR = "MENTOR"
     RECRUITER = "RECRUITER"
+    STUDENT = "STUDENT"
     COUNSELOR = "COUNSELOR"
-    CANDIDATE = "CANDIDATE"
+    CANDIDATE = "CANDIDATE"  # Retained for legacy backward compatibility
 
 class InvitationStatus(str, enum.Enum):
     PENDING = "PENDING"

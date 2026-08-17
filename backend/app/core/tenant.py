@@ -11,10 +11,20 @@ from app.core.exceptions import UnauthorizedTenantAccessException
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
 class TenantContext:
-    def __init__(self, user: User, organization: Organization, role: str):
+    def __init__(
+        self,
+        user: User,
+        organization: Organization,
+        role: str,
+        membership: Optional[OrganizationMembership] = None,
+        permissions: Optional[list] = None
+    ):
         self.user = user
         self.organization = organization
         self.role = role
+        self.membership = membership
+        self.permissions = permissions or []
+        self.is_superuser = user.is_superuser
 
 def get_auth_token(
     request: Request,
@@ -66,6 +76,8 @@ def get_current_tenant(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> TenantContext:
+    from app.core.permissions import get_role_permissions
+
     payload = decode_access_token(token)
     if not payload:
         raise UnauthorizedTenantAccessException()
@@ -90,4 +102,13 @@ def get_current_tenant(
     if not organization:
         raise UnauthorizedTenantAccessException()
 
-    return TenantContext(user=user, organization=organization, role=membership.role.value)
+    role_str = membership.role.value if hasattr(membership.role, "value") else str(membership.role)
+    perms = get_role_permissions(membership.role)
+
+    return TenantContext(
+        user=user,
+        organization=organization,
+        role=role_str,
+        membership=membership,
+        permissions=perms
+    )

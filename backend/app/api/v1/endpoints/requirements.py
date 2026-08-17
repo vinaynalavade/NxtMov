@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from app.core.database import get_db
 from app.core.tenant import get_current_tenant, TenantContext
+from app.core.permissions import require_permission, Permission
 from app.models.requirement import JobRequirement, RequirementStatus
 from app.schemas.requirement import JobRequirementCreate, JobRequirementUpdate, JobRequirementResponse
 
@@ -16,7 +17,7 @@ def list_requirements(
     company_id: Optional[int] = Query(None, description="Filter by company"),
     skip: int = 0,
     limit: int = 100,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.JOBS_VIEW)),
     db: Session = Depends(get_db)
 ):
     query = db.query(JobRequirement).filter(JobRequirement.organization_id == ctx.organization.id)
@@ -39,7 +40,7 @@ def list_requirements(
 @router.post("", response_model=JobRequirementResponse, status_code=status.HTTP_201_CREATED, summary="Create Job Opportunity")
 def create_requirement(
     req_in: JobRequirementCreate,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.JOBS_MANAGE)),
     db: Session = Depends(get_db)
 ):
     req = JobRequirement(
@@ -67,7 +68,7 @@ def create_requirement(
 @router.get("/{requirement_id}", response_model=JobRequirementResponse, summary="Get Job Opportunity Detail")
 def get_requirement(
     requirement_id: int,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.JOBS_VIEW)),
     db: Session = Depends(get_db)
 ):
     req = (
@@ -83,7 +84,7 @@ def get_requirement(
 def update_requirement(
     requirement_id: int,
     req_in: JobRequirementUpdate,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.JOBS_MANAGE)),
     db: Session = Depends(get_db)
 ):
     req = (
@@ -105,7 +106,7 @@ def update_requirement(
 @router.delete("/{requirement_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete Job Opportunity")
 def delete_requirement(
     requirement_id: int,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.JOBS_MANAGE)),
     db: Session = Depends(get_db)
 ):
     req = (
@@ -125,7 +126,7 @@ def get_requirement_candidate_matches(
     requirement_id: int,
     min_score: float = Query(0.0, ge=0.0, le=100.0),
     limit: int = Query(20, ge=1, le=100),
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.CANDIDATES_VIEW)),
     db: Session = Depends(get_db)
 ):
     from app.models.candidate import Candidate

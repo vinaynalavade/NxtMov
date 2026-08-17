@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from app.core.database import get_db
 from app.core.tenant import get_current_tenant, TenantContext
+from app.core.permissions import require_permission, Permission
 from app.models.company import Company
 from app.schemas.company import CompanyCreate, CompanyUpdate, CompanyResponse
 from app.schemas.contact import ContactResponse
@@ -16,7 +17,7 @@ def list_companies(
     search: Optional[str] = Query(None, description="Search by name, industry, or location"),
     skip: int = 0,
     limit: int = 100,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.COMPANIES_VIEW)),
     db: Session = Depends(get_db)
 ):
     query = db.query(Company).filter(Company.organization_id == ctx.organization.id)
@@ -35,7 +36,7 @@ def list_companies(
 @router.post("", response_model=CompanyResponse, status_code=status.HTTP_201_CREATED, summary="Create Company")
 def create_company(
     company_in: CompanyCreate,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.COMPANIES_MANAGE)),
     db: Session = Depends(get_db)
 ):
     # Prevent exact duplicate company names within the same tenant workspace
@@ -66,7 +67,7 @@ def create_company(
 @router.get("/{company_id}", response_model=CompanyResponse, summary="Get Company Detail")
 def get_company(
     company_id: int,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.COMPANIES_VIEW)),
     db: Session = Depends(get_db)
 ):
     company = (
@@ -82,7 +83,7 @@ def get_company(
 def update_company(
     company_id: int,
     company_in: CompanyUpdate,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.COMPANIES_MANAGE)),
     db: Session = Depends(get_db)
 ):
     company = (
@@ -104,7 +105,7 @@ def update_company(
 @router.delete("/{company_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete Company")
 def delete_company(
     company_id: int,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.COMPANIES_MANAGE)),
     db: Session = Depends(get_db)
 ):
     company = (
@@ -122,7 +123,7 @@ def delete_company(
 @router.get("/{company_id}/contacts", response_model=List[ContactResponse], summary="Get Related HR Contacts")
 def get_company_contacts(
     company_id: int,
-    ctx: TenantContext = Depends(get_current_tenant),
+    ctx: TenantContext = Depends(require_permission(Permission.COMPANIES_VIEW)),
     db: Session = Depends(get_db)
 ):
     company = (
