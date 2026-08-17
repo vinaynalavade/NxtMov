@@ -21,6 +21,29 @@ class Settings(BaseSettings):
     # Application Frontend Base URL
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "https://vinaynalavade.github.io/NxtMov")
 
+    # SMS Provider Configuration
+    SMS_PROVIDER: str = os.getenv("SMS_PROVIDER", "")
+    TWILIO_ACCOUNT_SID: Optional[str] = os.getenv("TWILIO_ACCOUNT_SID", None)
+    TWILIO_AUTH_TOKEN: Optional[str] = os.getenv("TWILIO_AUTH_TOKEN", None)
+    TWILIO_FROM_NUMBER: Optional[str] = os.getenv("TWILIO_FROM_NUMBER", None)
+    MSG91_AUTH_KEY: Optional[str] = os.getenv("MSG91_AUTH_KEY", None)
+    MSG91_SENDER_ID: Optional[str] = os.getenv("MSG91_SENDER_ID", None)
+    MSG91_TEMPLATE_ID: Optional[str] = os.getenv("MSG91_TEMPLATE_ID", None)
+    DEFAULT_PHONE_COUNTRY_CODE: str = os.getenv("DEFAULT_PHONE_COUNTRY_CODE", "+91")
+
+    # Email & SMTP Provider Configuration
+    EMAIL_PROVIDER: str = os.getenv("EMAIL_PROVIDER", "")
+    SMTP_HOST: Optional[str] = os.getenv("SMTP_HOST", None)
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USER: Optional[str] = os.getenv("SMTP_USER", None)
+    SMTP_PASSWORD: Optional[str] = os.getenv("SMTP_PASSWORD", None)
+    SMTP_TLS: bool = os.getenv("SMTP_TLS", "true").lower() in ("true", "1", "yes")
+    SMTP_SSL: bool = os.getenv("SMTP_SSL", "false").lower() in ("true", "1", "yes")
+    EMAILS_FROM_EMAIL: str = os.getenv("EMAILS_FROM_EMAIL", "noreply@nxtmov.com")
+    EMAILS_FROM_NAME: str = os.getenv("EMAILS_FROM_NAME", "NxtMov Platform")
+    SENDGRID_API_KEY: Optional[str] = os.getenv("SENDGRID_API_KEY", None)
+    RESEND_API_KEY: Optional[str] = os.getenv("RESEND_API_KEY", None)
+
     # CORS Configuration
     BACKEND_CORS_ORIGINS: List[str] = [
         "http://localhost",

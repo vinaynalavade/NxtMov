@@ -157,7 +157,7 @@ export function renderProfile() {
           </div>
           <div class="form-group">
             <label>College / University / Board</label>
-            <input type="text" id="prof-college" class="form-control" placeholder="e.g. DBATU University – Fabtech Campus" />
+            <input type="text" id="prof-college" class="form-control" placeholder="e.g. DBATU University â€“ Fabtech Campus" />
           </div>
           <div class="form-group">
             <label>Graduation Year</label>
@@ -230,7 +230,7 @@ export function renderProfile() {
     <!-- Tab 5: Settings & Verification Security -->
     <div id="tab-settings" class="profile-tab-content card" style="display: none;">
       <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 1rem; color: var(--text-primary);">Identity Verification & Account Security</h3>
-      
+
       <!-- Identity Verification Cards -->
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
         <!-- Email Verification Box -->
@@ -591,6 +591,7 @@ async function loadProfileData() {
         emailBadge.innerHTML = `${getIcon("alert-circle", "", 12)} Unverified`;
         emailBtn.style.display = "inline-flex";
         emailBtn.onclick = async () => {
+          emailBtn.disabled = true;
           try {
             showToast("Sending email verification link...", "info");
             const res = await api.post("/auth/verify-email/request");
@@ -598,6 +599,8 @@ async function loadProfileData() {
             if (res.is_verified) loadProfileData();
           } catch (err) {
             showToast(err.message || "Failed to send verification email.", "danger");
+          } finally {
+            emailBtn.disabled = false;
           }
         };
       }
@@ -632,9 +635,10 @@ function openPhoneOtpModal(phone) {
       <p style="font-size: 0.875rem; color: var(--text-secondary); margin: 0;">
         We sent a 6-digit verification code to <strong>${phone}</strong>. Enter the OTP code below to verify your mobile number.
       </p>
+      <div id="otp-dev-hint" style="display: none; font-size: 0.8rem; background: var(--bg-secondary); border: 1px dashed var(--primary-color); padding: 0.5rem; border-radius: 6px; color: var(--primary-color);"></div>
       <div class="form-group">
         <label>Enter 6-Digit OTP</label>
-        <input type="text" id="otp-input" maxlength="6" class="form-control" style="font-size: 1.25rem; letter-spacing: 0.35em; text-align: center;" placeholder="123456" />
+        <input type="text" id="otp-input" maxlength="6" inputmode="numeric" autocomplete="one-time-code" class="form-control" style="font-size: 1.25rem; letter-spacing: 0.35em; text-align: center;" placeholder="123456" />
       </div>
       <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
         <button type="button" id="btn-resend-otp" class="btn btn-ghost btn-sm" style="font-size: 0.8rem;">Resend Code</button>
@@ -647,38 +651,59 @@ function openPhoneOtpModal(phone) {
   `;
 
   const { closeModal } = createModal("Mobile OTP Verification", content);
+  const otpInput = document.getElementById("otp-input");
+  const submitBtn = document.getElementById("btn-submit-otp");
+  const resendBtn = document.getElementById("btn-resend-otp");
+  const devHint = document.getElementById("otp-dev-hint");
 
   // Send initial OTP
   api.post("/auth/verify-phone/request-otp", { phone }).then(res => {
     showToast(res.message || "OTP sent!");
+    if (res.dev_otp && devHint) {
+      devHint.style.display = "block";
+      devHint.textContent = `Demo Mode Code: ${res.dev_otp}`;
+      if (otpInput) otpInput.value = res.dev_otp;
+    }
   }).catch(err => {
     showToast(err.message || "Failed to trigger OTP.", "danger");
   });
 
-  document.getElementById("btn-resend-otp")?.addEventListener("click", async () => {
+  resendBtn?.addEventListener("click", async () => {
     try {
+      resendBtn.disabled = true;
       showToast("Resending OTP...", "info");
       const res = await api.post("/auth/verify-phone/request-otp", { phone });
       showToast(res.message || "New OTP sent!");
+      if (res.dev_otp && devHint) {
+        devHint.style.display = "block";
+        devHint.textContent = `Demo Mode Code: ${res.dev_otp}`;
+        if (otpInput) otpInput.value = res.dev_otp;
+      }
     } catch (err) {
       showToast(err.message || "Failed to resend OTP.", "danger");
+    } finally {
+      setTimeout(() => { if (resendBtn) resendBtn.disabled = false; }, 3000);
     }
   });
 
-  document.getElementById("btn-submit-otp")?.addEventListener("click", async () => {
-    const otp = document.getElementById("otp-input").value.trim();
-    if (!otp || otp.length !== 6) {
-      showToast("Please enter a valid 6-digit OTP.", "danger");
+  submitBtn?.addEventListener("click", async () => {
+    const otp = (otpInput?.value || "").trim();
+    if (!otp || otp.length !== 6 || !/^\d+$/.test(otp)) {
+      showToast("Please enter a valid 6-digit numeric OTP.", "danger");
+      otpInput?.focus();
       return;
     }
 
     try {
+      if (submitBtn) submitBtn.disabled = true;
       const res = await api.post("/auth/verify-phone/confirm-otp", { phone, otp });
-      showToast(res.message || "Phone verified successfully!");
+      showToast(res.message || "Phone verified successfully!", "success");
       closeModal();
       loadProfileData();
     } catch (err) {
       showToast(err.message || "Invalid OTP code.", "danger");
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
     }
   });
 }

@@ -214,7 +214,7 @@ export class API {
             } else if (rawDetail.includes("no account") || rawDetail.includes("not found") || rawDetail.includes("user")) {
               errorMsg = "No account found with this email address.";
             } else {
-              errorMsg = "Incorrect password. Please try again.";
+              errorMsg = data?.detail || "Incorrect password. Please try again.";
             }
           } else {
             errorMsg = "Your session has expired. Please log in again.";
@@ -223,6 +223,8 @@ export class API {
           errorMsg = data?.detail || "You do not have permission to perform this action.";
         } else if (response.status === 404) {
           errorMsg = data?.detail || "The requested resource was not found.";
+        } else if (response.status === 409) {
+          errorMsg = data?.detail || "A conflict occurred with this request. Please refresh and try again.";
         } else if (response.status === 413) {
           errorMsg = data?.detail || "Resume file is too large. Please upload a smaller file (max 15MB).";
         } else if (response.status === 415) {
@@ -235,7 +237,7 @@ export class API {
           } else if (isRegisterEndpoint) {
             errorMsg = "Too many signup attempts. Please wait a moment and try again.";
           } else {
-            errorMsg = "Too many requests. Please wait a moment and try again.";
+            errorMsg = data?.detail || "Too many requests. Please wait a moment and try again.";
           }
         } else if (response.status === 400 && isRegisterEndpoint) {
           const rawDetail = (typeof data?.detail === "string" ? data.detail : errorMsg).toLowerCase();
@@ -245,9 +247,20 @@ export class API {
             errorMsg = "Please enter a valid email address.";
           } else if (rawDetail.includes("password")) {
             errorMsg = "Password does not meet the required security requirements.";
+          } else {
+            errorMsg = data?.detail || errorMsg;
           }
         } else if (response.status === 502 || response.status === 503 || response.status === 504) {
-          errorMsg = "The NxtMov server is currently unavailable or restarting. Please try again in a few moments.";
+          const detail = typeof data?.detail === "string" ? data.detail : null;
+          if (detail && !detail.startsWith("<") && !detail.toLowerCase().includes("traceback")) {
+            errorMsg = detail;
+          } else if (response.status === 503) {
+            errorMsg = "Service is temporarily unavailable. Please try again in a few moments.";
+          } else if (response.status === 504) {
+            errorMsg = "Gateway timeout. The server took too long to respond. Please try again.";
+          } else {
+            errorMsg = "The NxtMov server or external service is currently unavailable. Please try again in a few moments.";
+          }
         } else if (response.status >= 500) {
           const detail = typeof data?.detail === "string" ? data.detail : null;
           if (detail && !detail.startsWith("<") && !detail.toLowerCase().includes("traceback")) {

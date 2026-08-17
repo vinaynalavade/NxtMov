@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.core.config import settings
 from app.core.rate_limiter import login_rate_limiter, register_rate_limiter
+from app.services.sms_service import otp_rate_limiter
 
 client = TestClient(app)
 
@@ -127,12 +128,23 @@ def test_email_and_mobile_verification_flow():
     # 3. Request email verification
     ver_req = client.post("/api/v1/auth/verify-email/request", headers=headers)
     assert ver_req.status_code == 200
+    ver_link = ver_req.json().get("verification_link")
+    assert ver_link is not None
+    token_extracted = ver_link.split("token=")[1]
+
+    # Confirm email
+    confirm_email = client.post("/api/v1/auth/verify-email/confirm", json={"token": token_extracted})
+    assert confirm_email.status_code == 200
+    assert confirm_email.json()["is_verified"] is True
 
     # 4. Request Phone OTP
+    otp_rate_limiter.clear()
     otp_req = client.post("/api/v1/auth/verify-phone/request-otp", headers=headers, json={"phone": "+91 9359345433"})
     assert otp_req.status_code == 200
+    dev_otp = otp_req.json()["dev_otp"]
+    assert dev_otp is not None
 
     # 5. Confirm Phone OTP
-    confirm_res = client.post("/api/v1/auth/verify-phone/confirm-otp", headers=headers, json={"phone": "+91 9359345433", "otp": "123456"})
+    confirm_res = client.post("/api/v1/auth/verify-phone/confirm-otp", headers=headers, json={"phone": "+91 9359345433", "otp": dev_otp})
     assert confirm_res.status_code == 200
     assert confirm_res.json()["is_verified"] is True

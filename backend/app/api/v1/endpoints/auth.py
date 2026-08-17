@@ -1,6 +1,7 @@
 import re
 import secrets
 import threading
+import time
 from typing import List, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from fastapi.security import OAuth2PasswordRequestForm
@@ -10,6 +11,8 @@ from app.core.database import get_db
 from app.core.security import get_password_hash, verify_password, create_access_token
 from app.core.tenant import get_current_user, TenantContext
 from app.core.rate_limiter import check_login_rate_limit, reset_login_rate_limit, check_register_rate_limit
+from app.services.sms_service import get_sms_provider, normalize_phone_number, otp_rate_limiter
+from app.services.email_service import get_email_provider, generate_verification_url
 from app.models.user import User
 from app.models.organization import Organization, OrganizationMembership, OrgType, OrgRole
 from app.models.candidate import Candidate, CandidateStatus
@@ -375,61 +378,88 @@ def request_email_verification(
     if user.is_email_verified:
         return {"message": "Email address is already verified.", "is_verified": True}
 
+    target_email = (req.email.strip().lower() if req and req.email else user.email).strip().lower()
     token = secrets.token_urlsafe(32)
-    user.email_verification_token = token
+    user.email_verification_token = f"{token}:{int(time.time())}"
     db.commit()
 
-    # Determine frontend application URL
     origin = request.headers.get("origin") or request.headers.get("referer")
-    if origin and ("localhost" in origin or "127.0.0.1" in origin):
-        frontend_base = origin.rstrip("/")
-    else:
-        frontend_base = settings.FRONTEND_URL.rstrip("/")
-    
-    verification_link = f"{frontend_base}/#/verify-email?token={token}"
+    verification_link = generate_verification_url(token, origin)
 
-    if settings.NXTMOV_DEMO_MODE and user.email == settings.DEMO_USER_EMAIL:
-        user.is_email_verified = True
-        db.commit()
-        return {"message": "Verification link sent. Check your email.", "is_verified": True, "verification_link": verification_link}
+    email_provider = get_email_provider()
+    result = email_provider.send_verification_email(
+        to_email=target_email,
+        user_name=user.full_name or "User",
+        verification_link=verification_link
+    )
 
-    return {"message": "Verification link sent. Check your email.", "is_verified": False, "verification_link": verification_link}
+    if not result.success:
+        raise HTTPException(
+            status_code=result.status_code,
+            detail=result.message
+        )
+
+    return {
+        "message": result.message,
+        "is_verified": False,
+        "verification_link": verification_link if settings.NXTMOV_DEMO_MODE else None
+    }
+
+def _process_email_verification(token_str: str, db: Session):
+    token_clean = token_str.strip()
+    if not token_clean:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This verification link is invalid or has already been used."
+        )
+
+    user = None
+    all_pending = db.query(User).filter(User.email_verification_token.isnot(None)).all()
+    for u in all_pending:
+        stored = u.email_verification_token or ""
+        if stored == token_clean or stored.startswith(f"{token_clean}:"):
+            user = u
+            break
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This verification link is invalid or has already been used."
+        )
+
+    # Check 24-hour expiration window (86400 seconds)
+    stored_token = user.email_verification_token or ""
+    if ":" in stored_token:
+        try:
+            _, ts_str = stored_token.rsplit(":", 1)
+            ts = float(ts_str)
+            if time.time() - ts > 86400:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="This verification link has expired. Please request a new one."
+                )
+        except (ValueError, TypeError):
+            pass
+
+    user.is_email_verified = True
+    user.email_verification_token = None
+    db.commit()
+
+    return {"message": "Email verified successfully.", "is_verified": True}
 
 @router.get("/verify-email", summary="Confirm Email Verification via Direct Link")
 def confirm_email_verification_get(
     token: str = Query(..., description="Email verification token"),
     db: Session = Depends(get_db)
 ):
-    user = db.query(User).filter(User.email_verification_token == token).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This verification link is invalid or has already been used."
-        )
-
-    user.is_email_verified = True
-    user.email_verification_token = None
-    db.commit()
-
-    return {"message": "Email verified successfully.", "is_verified": True}
+    return _process_email_verification(token, db)
 
 @router.post("/verify-email/confirm", summary="Confirm Email Verification Token")
 def confirm_email_verification(
     data: EmailVerifyConfirm,
     db: Session = Depends(get_db)
 ):
-    user = db.query(User).filter(User.email_verification_token == data.token).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This verification link is invalid or has already been used."
-        )
-
-    user.is_email_verified = True
-    user.email_verification_token = None
-    db.commit()
-
-    return {"message": "Email verified successfully.", "is_verified": True}
+    return _process_email_verification(data.token, db)
 
 @router.post("/verify-phone/request-otp", summary="Request Phone OTP Verification")
 def request_phone_otp(
@@ -437,24 +467,42 @@ def request_phone_otp(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    clean_digits = re.sub(r"\D", "", data.phone)
-    if len(clean_digits) < 7 or len(clean_digits) > 15:
+    try:
+        clean_phone = normalize_phone_number(data.phone, settings.DEFAULT_PHONE_COUNTRY_CODE)
+    except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Please enter a valid mobile number (7 to 15 digits)."
+            detail=str(e)
+        )
+
+    # Rate limiting: minimum cooldown and maximum requests per window
+    rate_key = f"otp:{user.id}:{clean_phone}"
+    is_allowed, rate_msg = otp_rate_limiter.check_rate_limit(rate_key)
+    if not is_allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=rate_msg
         )
 
     otp = str(secrets.randbelow(900000) + 100000)
-    user.phone = data.phone.strip()
-    user.phone_otp = otp
+    user.phone = clean_phone
+    user.phone_otp = f"{otp}:{int(time.time())}"
     db.commit()
 
-    if settings.NXTMOV_DEMO_MODE:
-        user.is_phone_verified = True
-        db.commit()
-        return {"message": "Phone number verified successfully.", "is_verified": True}
+    sms_provider = get_sms_provider()
+    result = sms_provider.send_otp(clean_phone, otp)
 
-    return {"message": "OTP sent successfully to your mobile number.", "is_verified": False}
+    if not result.success:
+        raise HTTPException(
+            status_code=result.status_code,
+            detail=result.message
+        )
+
+    return {
+        "message": result.message,
+        "is_verified": False,
+        "dev_otp": otp if settings.NXTMOV_DEMO_MODE else None
+    }
 
 @router.post("/verify-phone/confirm-otp", summary="Confirm Phone OTP")
 def confirm_phone_otp(
@@ -462,29 +510,75 @@ def confirm_phone_otp(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    if settings.NXTMOV_DEMO_MODE or (user.phone_otp and user.phone_otp == data.otp.strip()):
-        user.is_phone_verified = True
-        user.phone_otp = None
-        db.commit()
-        return {"message": "Mobile number verified successfully!", "is_verified": True}
+    otp_input = data.otp.strip()
+    if not otp_input or not otp_input.isdigit() or len(otp_input) != 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid OTP. Please enter the correct 6-digit code."
+        )
 
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail="Invalid OTP. Please enter the correct 6-digit code or request a new one."
-    )
+    if not user.phone_otp:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No pending verification code found. Please request a new OTP."
+        )
+
+    stored_str = user.phone_otp
+    stored_code = stored_str
+    if ":" in stored_str:
+        stored_code, ts_str = stored_str.split(":", 1)
+        try:
+            ts = float(ts_str)
+            # 10 minute expiration window (600 seconds)
+            if time.time() - ts > 600:
+                user.phone_otp = None
+                db.commit()
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="This verification code has expired. Please request a new OTP."
+                )
+        except (ValueError, TypeError):
+            pass
+
+    # Compare code
+    if stored_code != otp_input:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid OTP code. Please enter the correct 6-digit code or request a new one."
+        )
+
+    # Success: verify and clear phone_otp (single-use)
+    user.is_phone_verified = True
+    user.phone_otp = None
+
+    # Sync candidate phone if candidate exists
+    cand = db.query(Candidate).filter(Candidate.user_id == user.id).first()
+    if cand and user.phone:
+        cand.phone = user.phone
+
+    db.commit()
+    return {"message": "Mobile number verified successfully!", "is_verified": True}
 
 @router.post("/forgot-password", summary="Request Password Reset Link")
 def forgot_password(
+    request: Request,
     data: ForgotPasswordRequest,
     db: Session = Depends(get_db)
 ):
     user = db.query(User).filter(User.email == data.email.strip().lower()).first()
     if user:
         token = secrets.token_urlsafe(32)
-        user.password_reset_token = token
+        user.password_reset_token = f"{token}:{int(time.time())}"
         db.commit()
 
-    # OWASP generic response to prevent account enumeration
+        origin = request.headers.get("origin") or request.headers.get("referer")
+        base = (origin if origin and ("localhost" in origin or "127.0.0.1" in origin) else settings.FRONTEND_URL).rstrip("/")
+        reset_link = f"{base}/#/reset-password?token={token}"
+
+        email_provider = get_email_provider()
+        email_provider.send_password_reset_email(user.email, user.full_name or "User", reset_link)
+
+    # Generic response to prevent account enumeration
     return {"message": "If an account with this email exists, a password reset link has been sent."}
 
 @router.post("/reset-password", summary="Reset Password with Token")
@@ -498,12 +592,36 @@ def reset_password(
             detail="Password does not meet the required security requirements."
         )
 
-    user = db.query(User).filter(User.password_reset_token == data.token).first()
+    token_clean = data.token.strip()
+    user = None
+    all_users = db.query(User).filter(User.password_reset_token.isnot(None)).all()
+    for u in all_users:
+        stored = u.password_reset_token or ""
+        if stored == token_clean or stored.startswith(f"{token_clean}:"):
+            user = u
+            break
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This password reset link is invalid or has expired."
         )
+
+    # Check 2-hour expiration (7200 seconds)
+    stored_token = user.password_reset_token or ""
+    if ":" in stored_token:
+        try:
+            _, ts_str = stored_token.rsplit(":", 1)
+            ts = float(ts_str)
+            if time.time() - ts > 7200:
+                user.password_reset_token = None
+                db.commit()
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="This password reset link has expired. Please request a new one."
+                )
+        except (ValueError, TypeError):
+            pass
 
     user.hashed_password = get_password_hash(data.new_password)
     user.password_reset_token = None
