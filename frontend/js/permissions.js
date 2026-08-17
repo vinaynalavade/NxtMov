@@ -77,28 +77,37 @@ export function getCurrentUserRole(store) {
   
   // 1. Check user.active_organization.role
   if (store.state.user?.active_organization?.role) {
-    return String(store.state.user.active_organization.role).toUpperCase();
+    const r = String(store.state.user.active_organization.role).toUpperCase();
+    return r === "CANDIDATE" ? ROLES.STUDENT : r;
   }
 
-  // 2. Check token payload if decoded
-  if (store.state.token) {
+  // 2. Check token payload if stored in state or localStorage
+  const token = store.state.token || (typeof localStorage !== "undefined" && localStorage.getItem("nxtmov_token"));
+  if (token) {
     try {
-      const parts = store.state.token.split(".");
+      const parts = token.split(".");
       if (parts.length === 3) {
         const payload = JSON.parse(atob(parts[1]));
-        if (payload.role) return String(payload.role).toUpperCase();
+        if (payload.role) {
+          const r = String(payload.role).toUpperCase();
+          return r === "CANDIDATE" ? ROLES.STUDENT : r;
+        }
       }
     } catch (e) {
       // fallback
     }
   }
 
-  // 3. Check user roles array
+  // 3. Check user roles array for activeOrgId match
   if (store.state.user?.roles && store.state.user.roles.length > 0) {
-    const activeOrgId = store.state.activeOrgId;
-    const match = store.state.user.roles.find(r => r.organization_id === activeOrgId);
-    if (match && match.role) return String(match.role).toUpperCase();
-    return String(store.state.user.roles[0].role).toUpperCase();
+    const activeOrgId = store.state.activeOrgId || store.state.user?.active_organization?.id;
+    if (activeOrgId) {
+      const match = store.state.user.roles.find(r => r.organization_id === activeOrgId);
+      if (match && match.role) {
+        const r = String(match.role).toUpperCase();
+        return r === "CANDIDATE" ? ROLES.STUDENT : r;
+      }
+    }
   }
 
   return ROLES.STUDENT;

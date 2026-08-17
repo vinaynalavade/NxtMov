@@ -11,6 +11,7 @@ class ActiveOrgInfo(BaseModel):
 class UserRoleInfo(BaseModel):
     organization_id: int
     role: str
+    organization_name: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -33,6 +34,8 @@ class UserResponse(UserBase):
     is_superuser: bool
     is_email_verified: bool = False
     is_phone_verified: bool = False
+    headline: Optional[str] = None
+    location: Optional[str] = None
     active_organization: Optional[ActiveOrgInfo] = None
     roles: List[UserRoleInfo] = []
     permissions: List[str] = []

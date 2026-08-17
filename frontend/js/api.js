@@ -173,8 +173,8 @@ export class API {
       }
     }
 
-    const isLoginEndpoint = endpoint === "/auth/login";
-    const isRegisterEndpoint = endpoint === "/auth/register";
+    const isLoginEndpoint = endpoint === "/auth/login" || endpoint.startsWith("/auth/login?");
+    const isRegisterEndpoint = endpoint === "/auth/register" || endpoint.startsWith("/auth/register?");
     const isPublicAuthEndpoint = endpoint.startsWith("/auth/config") || isLoginEndpoint || isRegisterEndpoint;
 
     try {

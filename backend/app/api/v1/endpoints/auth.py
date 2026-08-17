@@ -104,6 +104,9 @@ def ensure_demo_user_exists(db: Session):
                     )
                     db.add(d_mem)
                     db.commit()
+                elif d_mem.role != o_role:
+                    d_mem.role = o_role
+                    db.commit()
 
                 # Check or create linked candidate
                 d_cand = db.query(Candidate).filter(
@@ -149,7 +152,12 @@ from app.schemas.user import (
 )
 from app.schemas.organization import OrganizationResponse, WorkspaceSwitchRequest
 
-def make_user_response(user: User, db: Session, active_org_id: Optional[int] = None) -> UserResponse:
+def make_user_response(
+    user: User,
+    db: Session,
+    active_org_id: Optional[int] = None,
+    active_role: Optional[str] = None
+) -> UserResponse:
     from app.core.permissions import get_role_permissions
 
     memberships = (
@@ -165,36 +173,55 @@ def make_user_response(user: User, db: Session, active_org_id: Optional[int] = N
 
     for m in memberships:
         r_str = m.role.value if hasattr(m.role, "value") else str(m.role)
+        if r_str.upper() == "CANDIDATE":
+            r_str = "STUDENT"
+        org_name = m.organization.name if m.organization else "Workspace"
         roles_list.append(UserRoleInfo(
             organization_id=m.organization_id,
             role=r_str,
-            organization_name=m.organization.name if m.organization else None
+            organization_name=org_name
         ))
 
-        # Check if this membership matches the requested active_org_id
-        if active_org_id and m.organization_id == active_org_id:
+        # Check if this membership matches the requested active_org_id or active_role
+        is_org_match = active_org_id is not None and int(m.organization_id) == int(active_org_id)
+        is_role_match = active_role is not None and r_str.upper() == active_role.upper()
+
+        if is_org_match or (active_org_info is None and is_role_match):
             active_role_str = r_str
             active_org_info = ActiveOrgInfo(
-                id=m.organization.id if m.organization else m.organization_id,
-                name=m.organization.name if m.organization else "Workspace",
+                id=m.organization_id,
+                name=org_name,
                 role=r_str
             )
             resolved_permissions = get_role_permissions(r_str, is_superuser=user.is_superuser)
 
-    # Fallback to first membership if active_org_info is still None
-    if not active_org_info and memberships:
+    # If active_role is requested (e.g. ADMIN) and user is superuser, resolve ADMIN context
+    if active_role and active_role.upper() == "ADMIN" and user.is_superuser and not active_org_info:
+        active_role_str = "ADMIN"
+        first_org = memberships[0] if memberships else None
+        active_org_info = ActiveOrgInfo(
+            id=first_org.organization_id if first_org else 0,
+            name=first_org.organization.name if (first_org and first_org.organization) else "Admin Workspace",
+            role="ADMIN"
+        )
+        resolved_permissions = get_role_permissions("ADMIN", is_superuser=True)
+
+    # Fallback to first membership ONLY IF active_org_info is still None and no active_role was requested
+    if not active_org_info and memberships and not active_role:
         first_m = memberships[0]
         first_r = first_m.role.value if hasattr(first_m.role, "value") else str(first_m.role)
+        if first_r.upper() == "CANDIDATE":
+            first_r = "STUDENT"
         active_role_str = first_r
         active_org_info = ActiveOrgInfo(
-            id=first_m.organization.id if first_m.organization else first_m.organization_id,
+            id=first_m.organization_id,
             name=first_m.organization.name if first_m.organization else "Workspace",
             role=first_r
         )
         resolved_permissions = get_role_permissions(first_r, is_superuser=user.is_superuser)
 
     if not active_org_info:
-        resolved_permissions = get_role_permissions("STUDENT", is_superuser=user.is_superuser)
+        resolved_permissions = get_role_permissions(active_role or "STUDENT", is_superuser=user.is_superuser)
 
     return UserResponse(
         id=user.id,
@@ -210,8 +237,7 @@ def make_user_response(user: User, db: Session, active_org_id: Optional[int] = N
         location=user.location,
         active_organization=active_org_info,
         roles=roles_list,
-        permissions=resolved_permissions,
-        created_at=user.created_at
+        permissions=resolved_permissions
     )
 
 @router.get("/config", summary="Get Public Authentication Configuration")
@@ -318,7 +344,7 @@ def register(request: Request, user_in: UserCreate, db: Session = Depends(get_db
         access_token=access_token,
         token_type="bearer",
         active_org_id=personal_org.id,
-        user=make_user_response(user, db, active_org_id=personal_org.id)
+        user=make_user_response(user, db, active_org_id=personal_org.id, active_role="ADMIN")
     )
 
 @router.post("/login", response_model=Token, summary="User Login")
@@ -431,6 +457,9 @@ async def login(
     reset_login_rate_limit(request, username_clean)
 
     role_val = target_membership.role.value if hasattr(target_membership.role, "value") else str(target_membership.role)
+    if role_val.upper() == "CANDIDATE":
+        role_val = "STUDENT"
+
     access_token = create_access_token(
         subject=user.id,
         org_id=target_membership.organization_id,
@@ -441,7 +470,12 @@ async def login(
         access_token=access_token,
         token_type="bearer",
         active_org_id=target_membership.organization_id,
-        user=make_user_response(user, db, active_org_id=target_membership.organization_id)
+        user=make_user_response(
+            user,
+            db,
+            active_org_id=target_membership.organization_id,
+            active_role=role_val
+        )
     )
 
 @router.get("/me", summary="Get Current User Profile & Workspaces")
@@ -453,29 +487,47 @@ def get_me(request: Request, user: User = Depends(get_current_user), db: Session
     )
     org_list = []
     active_org_id = None
+    token_role = None
 
-    # Try getting active org from token header if present
+    # Try getting active org and role from token header if present
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
         from app.core.security import decode_access_token
         payload = decode_access_token(auth_header[7:].strip())
         if payload:
-            active_org_id = payload.get("org_id")
+            raw_org = payload.get("org_id")
+            if raw_org is not None:
+                try:
+                    active_org_id = int(raw_org)
+                except (ValueError, TypeError):
+                    active_org_id = None
+            token_role = payload.get("role")
 
     for m in memberships:
         if not m.organization:
             continue
         org_resp = OrganizationResponse.model_validate(m.organization)
         role_str = m.role.value if hasattr(m.role, "value") else str(m.role)
+        if role_str.upper() == "CANDIDATE":
+            role_str = "STUDENT"
         org_dict = org_resp.model_dump()
         org_dict["role"] = role_str
         org_list.append(org_dict)
+
+    if not active_org_id and token_role:
+        for m in memberships:
+            m_r = m.role.value if hasattr(m.role, "value") else str(m.role).upper()
+            if m_r == "CANDIDATE":
+                m_r = "STUDENT"
+            if m_r == token_role.upper():
+                active_org_id = m.organization_id
+                break
 
     if not active_org_id and memberships:
         active_org_id = memberships[0].organization_id
 
     return {
-        "user": make_user_response(user, db, active_org_id=active_org_id),
+        "user": make_user_response(user, db, active_org_id=active_org_id, active_role=token_role),
         "organizations": org_list
     }
 
