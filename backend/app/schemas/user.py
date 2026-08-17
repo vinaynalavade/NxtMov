@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, EmailStr, ConfigDict
 
@@ -23,15 +24,70 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
+    account_type: Optional[str] = "STUDENT"
+
+class StudentRegisterRequest(BaseModel):
+    full_name: str
+    email: str
+    password: str
+    phone: Optional[str] = None
+
+class MentorApplicationCreate(BaseModel):
+    full_name: str
+    official_email: str
+    institute_name: str
+    employee_id: str
+    department: Optional[str] = None
+    designation: Optional[str] = None
+    password: str
+    phone: Optional[str] = None
+
+class MentorApplicationResponse(BaseModel):
+    id: int
+    user_id: Optional[int] = None
+    full_name: str
+    official_email: str
+    institute_name: str
+    employee_id: str
+    department: Optional[str] = None
+    designation: Optional[str] = None
+    status: str
+    submitted_at: datetime
+    reviewed_at: Optional[datetime] = None
+    reviewed_by: Optional[int] = None
+    rejection_reason: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class MentorApprovalAction(BaseModel):
+    rejection_reason: Optional[str] = None
+
+class AdminBootstrapRequest(BaseModel):
+    bootstrap_key: str
+    full_name: str
+    email: str
+    password: str
+
+class AdminInviteRequest(BaseModel):
+    email: str
+    full_name: Optional[str] = None
+    account_type: str = "ADMIN"  # "ADMIN" or "MENTOR"
+
+class UserStatusUpdate(BaseModel):
+    status: str
+    is_active: Optional[bool] = None
 
 class UserLogin(BaseModel):
     email: str
     password: str
+    requested_account_type: Optional[str] = None
 
 class UserResponse(UserBase):
     id: int
-    is_active: bool
-    is_superuser: bool
+    account_type: str = "STUDENT"
+    status: str = "ACTIVE"
+    is_active: bool = True
+    is_superuser: bool = False
     is_email_verified: bool = False
     is_phone_verified: bool = False
     headline: Optional[str] = None
@@ -52,8 +108,10 @@ class Token(BaseModel):
 
 class TokenPayload(BaseModel):
     sub: Optional[int] = None
-    org_id: Optional[int] = None
+    account_type: Optional[str] = None
+    status: Optional[str] = None
     role: Optional[str] = None
+    org_id: Optional[int] = None
 
 class EmailVerifyRequest(BaseModel):
     email: Optional[str] = None

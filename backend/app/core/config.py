@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 Days
 
+    # Administrator Bootstrap Secret (Server-side validation for initial Admin bootstrap)
+    ADMIN_BOOTSTRAP_SECRET: str = os.getenv("ADMIN_BOOTSTRAP_SECRET", "nxtmov_admin_bootstrap_secret_2026")
+
     # Temporary Development & Demo Credentials (REMOVE BEFORE PRODUCTION DEPLOYMENT)
     NXTMOV_DEMO_MODE: bool = os.getenv("NXTMOV_DEMO_MODE", "true").lower() in ("true", "1", "yes")
     DEMO_USER_EMAIL: str = "demo@nxtmov.local"

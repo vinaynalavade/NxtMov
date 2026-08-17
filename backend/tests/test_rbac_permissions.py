@@ -1,11 +1,13 @@
 from fastapi.testclient import TestClient
 from app.main import app
+from app.core.config import settings
 
 client = TestClient(app)
 
 def test_rbac_and_cross_workspace_isolation():
     # User A creates Consultancy A
-    user_a = client.post("/api/v1/auth/register", json={
+    user_a = client.post("/api/v1/auth/admin/bootstrap", json={
+        "bootstrap_key": settings.ADMIN_BOOTSTRAP_SECRET,
         "full_name": "User A Admin",
         "email": "usera@agencya.com",
         "password": "Password123!"
@@ -27,7 +29,8 @@ def test_rbac_and_cross_workspace_isolation():
     cand_a_id = cand_a["id"]
 
     # User B creates Consultancy B
-    user_b = client.post("/api/v1/auth/register", json={
+    user_b = client.post("/api/v1/auth/admin/bootstrap", json={
+        "bootstrap_key": settings.ADMIN_BOOTSTRAP_SECRET,
         "full_name": "User B Admin",
         "email": "userb@agencyb.com",
         "password": "Password123!"
@@ -65,6 +68,9 @@ def test_rbac_and_cross_workspace_isolation():
     switch_personal = client.post(f"/api/v1/auth/switch?organization_id={personal_a_id}", headers=headers_a)
     headers_personal_a = {"Authorization": f"Bearer {switch_personal.json()['access_token']}"}
 
-    personal_candidates = client.get("/api/v1/candidates", headers=headers_personal_a).json()
-    personal_cand_ids = [c["id"] for c in personal_candidates if c["email"] == "cand_a@agencya.com"]
-    assert len(personal_cand_ids) == 0
+    personal_candidates_res = client.get("/api/v1/candidates", headers=headers_personal_a)
+    if personal_candidates_res.status_code == 200:
+        personal_cand_ids = [c["id"] for c in personal_candidates_res.json() if c.get("email") == "cand_a@agencya.com"]
+        assert len(personal_cand_ids) == 0
+    else:
+        assert personal_candidates_res.status_code == 403

@@ -1,4 +1,4 @@
-import { API } from "../api.js";
+import { api, API } from "../api.js";
 import { store } from "../store.js";
 import {
   showToast,
@@ -11,7 +11,7 @@ import { getIcon } from "../icons.js";
 import { ROLE_CONFIG, ROLES } from "../permissions.js";
 
 /**
- * Publicly selectable account types for initial login screen
+ * 3 Core Account Types for NxtMov
  */
 const SELECTABLE_ACCOUNT_ROLES = [
   {
@@ -23,7 +23,7 @@ const SELECTABLE_ACCOUNT_ROLES = [
     icon: "graduation-cap",
     accentColor: "#10b981",
     accentBg: "rgba(16, 185, 129, 0.12)",
-    description: "Manage your profile, resume, applications and career journey."
+    description: "Manage your profile, resume analysis, matched jobs, and track applications."
   },
   {
     roleKey: "MENTOR",
@@ -34,7 +34,7 @@ const SELECTABLE_ACCOUNT_ROLES = [
     icon: "mentor",
     accentColor: "#a855f7",
     accentBg: "rgba(168, 85, 247, 0.12)",
-    description: "Guide students, monitor progress and provide mentorship."
+    description: "Guide students, monitor progress, review ATS readiness, and conduct sessions."
   },
   {
     roleKey: "ADMIN",
@@ -45,18 +45,7 @@ const SELECTABLE_ACCOUNT_ROLES = [
     icon: "shield-check",
     accentColor: "#ef4444",
     accentBg: "rgba(239, 68, 68, 0.12)",
-    description: "Manage users, workspaces, roles and platform operations."
-  },
-  {
-    roleKey: "RECRUITER",
-    urlParam: "recruiter",
-    title: "Recruiter",
-    badgeLabel: "Talent Partner",
-    badgeClass: "badge-recruiter",
-    icon: "briefcase",
-    accentColor: "#3b82f6",
-    accentBg: "rgba(59, 130, 246, 0.12)",
-    description: "Manage candidates, jobs, applications and recruitment workflows."
+    description: "Manage users, mentor approvals, organizations, and platform operations."
   }
 ];
 
@@ -82,7 +71,6 @@ function getSelectedRoleFromHash() {
 
 /**
  * Master render function for /login
- * Displays Account Type Selection if no role is chosen; otherwise renders Role-Specific Login.
  */
 export function renderLogin() {
   const selectedRoleKey = getSelectedRoleFromHash();
@@ -96,7 +84,7 @@ export function renderLogin() {
 }
 
 /**
- * 1. ACCOUNT-TYPE SELECTION SCREEN
+ * 1. ACCOUNT-TYPE SELECTION SCREEN ("How are you using NxtMov?")
  */
 function renderAccountTypeSelectionScreen() {
   return `
@@ -113,8 +101,8 @@ function renderAccountTypeSelectionScreen() {
         </p>
       </div>
 
-      <!-- 4 Selectable Role Cards -->
-      <div class="role-select-grid" role="group" aria-label="Select your account type">
+      <!-- 3 Selectable Account Type Cards -->
+      <div class="role-select-grid" role="group" aria-label="Select your account type" style="grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));">
         ${SELECTABLE_ACCOUNT_ROLES.map(role => `
           <button
             type="button"
@@ -142,8 +130,8 @@ function renderAccountTypeSelectionScreen() {
         `).join("")}
       </div>
 
-      <div style="text-align: center; margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--border-color); font-size: 0.875rem; color: var(--text-secondary);">
-        Don't have an account? <a href="#/register" style="color: var(--primary-color); font-weight: 600;">Create Workspace</a>
+      <div style="text-align: center; margin-top: 1.75rem; padding-top: 1.25rem; border-top: 1px solid var(--border-color); font-size: 0.875rem; color: var(--text-secondary);">
+        Need to register? <a href="#/register" style="color: var(--primary-color); font-weight: 600;">Student Sign Up</a> • <a href="#/apply-mentor" style="color: #a855f7; font-weight: 600;">Apply as Mentor</a>
       </div>
     </div>
   `;
@@ -153,9 +141,12 @@ function renderAccountTypeSelectionScreen() {
  * 2. ROLE-SPECIFIC LOGIN SCREEN
  */
 function renderRoleSpecificLoginScreen(roleMeta) {
+  const isMentor = roleMeta.roleKey === "MENTOR";
+  const isAdmin = roleMeta.roleKey === "ADMIN";
+
   return `
     <div class="auth-card card" style="max-width: 460px; margin: 2.5rem auto; padding: 2rem;">
-      <!-- Back Navigation to Change Role -->
+      <!-- Back Navigation to Change Account Type -->
       <div style="margin-bottom: 1.25rem;">
         <button
           type="button"
@@ -186,7 +177,10 @@ function renderRoleSpecificLoginScreen(roleMeta) {
         </p>
       </div>
 
-      <!-- Demo Mode Card Container (if enabled) -->
+      <!-- Error / Status Container -->
+      <div id="login-error-container" style="display: none; margin-bottom: 1rem; padding: 0.75rem 1rem; border-radius: var(--radius-md); background: rgba(239, 68, 68, 0.1); border: 1px solid var(--danger-color); color: var(--danger-color); font-size: 0.85rem;"></div>
+
+      <!-- Demo Credentials Banner (Dev/Evaluation) -->
       <div id="demo-credentials-container" style="margin-bottom: 1.25rem;">
         <div style="background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-left: 4px solid var(--warning-color); border-radius: var(--radius-md); padding: 0.875rem 1rem;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
@@ -195,14 +189,12 @@ function renderRoleSpecificLoginScreen(roleMeta) {
             </span>
             <span class="badge-status badge-warning" style="font-size: 0.625rem;">DEV ONLY</span>
           </div>
-
           <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.65rem;">
-            <div><strong>Email:</strong> <code id="demo-email-text">demo@nxtmov.local</code></div>
+            <div><strong>Admin Email:</strong> <code id="demo-email-text">demo@nxtmov.local</code></div>
             <div><strong>Password:</strong> <code id="demo-pass-text">NxtMov@123</code></div>
           </div>
-
           <button type="button" id="use-demo-creds-btn" class="btn btn-outline" style="width: 100%; font-size: 0.775rem; padding: 0.3rem 0.5rem; color: var(--primary-color); border-color: var(--primary-color); gap: 0.35rem; justify-content: center;">
-            ${getIcon("user", "", 13)} Fill Demo ${roleMeta.title} Credentials
+            ${getIcon("user", "", 13)} Fill Demo Credentials
           </button>
         </div>
       </div>
@@ -211,13 +203,13 @@ function renderRoleSpecificLoginScreen(roleMeta) {
       <form id="login-form" novalidate data-requested-role="${roleMeta.roleKey}">
         <div class="form-group" style="margin-bottom: 1rem;">
           <label style="display: block; margin-bottom: 0.45rem; font-size: 0.875rem; font-weight: 600;">
-            Email Address
+            ${isMentor ? "Official Email Address *" : "Email Address *"}
           </label>
           <input
             type="email"
             id="login-email"
             required
-            placeholder="you@example.com"
+            placeholder="${isMentor ? 'faculty@institute.edu' : 'you@example.com'}"
             class="form-input"
             style="width: 100%;"
             autocomplete="email"
@@ -225,9 +217,10 @@ function renderRoleSpecificLoginScreen(roleMeta) {
         </div>
 
         <div class="form-group" style="margin-bottom: 1.5rem;">
-          <label style="display: block; margin-bottom: 0.45rem; font-size: 0.875rem; font-weight: 600;">
-            Password
-          </label>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.45rem;">
+            <label style="font-size: 0.875rem; font-weight: 600; margin: 0;">Password *</label>
+            <a href="#/forgot-password" style="font-size: 0.775rem; color: var(--primary-color);">Forgot?</a>
+          </div>
           <input
             type="password"
             id="login-password"
@@ -249,9 +242,16 @@ function renderRoleSpecificLoginScreen(roleMeta) {
         </button>
       </form>
 
-      <p style="text-align: center; margin-top: 1.5rem; font-size: 0.875rem; color: var(--text-secondary);">
-        Don't have an account? <a href="#/register" style="color: var(--primary-color); font-weight: 600;">Create Workspace</a>
-      </p>
+      <!-- Context-Aware Bottom Links -->
+      <div style="text-align: center; margin-top: 1.5rem; font-size: 0.875rem; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 1.25rem;">
+        ${roleMeta.roleKey === 'STUDENT' ? `
+          Don't have an account? <a href="#/register" style="color: var(--primary-color); font-weight: 600;">Register as Student</a>
+        ` : roleMeta.roleKey === 'MENTOR' ? `
+          Want to join as a mentor? <a href="#/apply-mentor" style="color: #a855f7; font-weight: 600;">Apply as Mentor</a>
+        ` : `
+          Need initial admin access? <a href="#/admin-bootstrap" style="color: #ef4444; font-weight: 600;">Bootstrap Administrator</a>
+        `}
+      </div>
     </div>
   `;
 }
@@ -262,7 +262,6 @@ function renderRoleSpecificLoginScreen(roleMeta) {
 export function initLoginListeners() {
   const selectedRoleKey = getSelectedRoleFromHash();
 
-  // If on Account Type Selection Screen: attach card click listeners
   if (!selectedRoleKey) {
     const cards = document.querySelectorAll(".role-select-card");
     cards.forEach(card => {
@@ -284,7 +283,6 @@ export function initLoginListeners() {
     return;
   }
 
-  // If on Role-Specific Login Screen:
   const changeRoleBtn = document.getElementById("btn-change-account-type");
   if (changeRoleBtn) {
     changeRoleBtn.onclick = (e) => {
@@ -299,12 +297,11 @@ export function initLoginListeners() {
   const emailInput = document.getElementById("login-email");
   const passwordInput = document.getElementById("login-password");
   const submitBtn = document.getElementById("login-submit-btn");
+  const errorContainer = document.getElementById("login-error-container");
   const requestedRole = form.getAttribute("data-requested-role") || selectedRoleKey;
 
-  // Attach password visibility eye toggle
   initPasswordToggle(form);
 
-  // Attach Use Demo Account button handler
   const demoBtn = document.getElementById("use-demo-creds-btn");
   if (demoBtn) {
     demoBtn.onclick = (e) => {
@@ -314,12 +311,11 @@ export function initLoginListeners() {
 
       if (emailInput) emailInput.value = emailText;
       if (passwordInput) passwordInput.value = passText;
-      showToast(`Demo ${requestedRole} credentials filled.`);
+      showToast("Demo credentials filled.");
       submitBtn?.focus();
     };
   }
 
-  // Check backend auth config asynchronously
   loadDemoModeConfig();
 
   let isSubmitting = false;
@@ -331,7 +327,8 @@ export function initLoginListeners() {
     const email = (emailInput?.value || "").trim();
     const password = passwordInput?.value || "";
 
-    // Input validations
+    if (errorContainer) errorContainer.style.display = "none";
+
     if (!email) {
       showToast("Please enter your email address.", "danger");
       emailInput?.focus();
@@ -348,7 +345,6 @@ export function initLoginListeners() {
       return;
     }
 
-    // Set loading state & disable submission
     isSubmitting = true;
     if (submitBtn) {
       submitBtn.disabled = true;
@@ -358,21 +354,28 @@ export function initLoginListeners() {
     const formData = new FormData();
     formData.append("username", email);
     formData.append("password", password);
-    if (requestedRole) {
-      formData.append("requested_role", requestedRole);
-    }
+    formData.append("requested_account_type", requestedRole);
+    formData.append("requested_role", requestedRole);
 
     try {
-      const data = await API.post(`/auth/login?requested_role=${encodeURIComponent(requestedRole || "")}`, formData, false);
+      const data = await API.post(
+        `/auth/login?requested_account_type=${encodeURIComponent(requestedRole || "")}`,
+        formData,
+        false
+      );
+
       API.setToken(data.access_token);
       store.setState({ user: data.user, activeOrgId: data.active_org_id });
-      showToast("Login successful. Welcome back!", "success");
+      showToast(`Welcome, ${data.user.full_name || 'User'}!`, "success");
       window.location.hash = "#/dashboard";
     } catch (err) {
-      showToast(err.message || "Authentication failed.", "danger");
-      if (passwordInput) {
-        passwordInput.focus();
+      const msg = err.message || "Authentication failed.";
+      if (errorContainer) {
+        errorContainer.textContent = msg;
+        errorContainer.style.display = "block";
       }
+      showToast(msg, "danger");
+      if (passwordInput) passwordInput.focus();
     } finally {
       isSubmitting = false;
       if (submitBtn) {
@@ -385,7 +388,406 @@ export function initLoginListeners() {
 }
 
 /**
- * Checks public authentication configuration on backend. If demo_mode is disabled, hides Demo Card.
+ * 3. STUDENT REGISTRATION VIEW
+ */
+export function renderRegister() {
+  return `
+    <div class="auth-card card" style="max-width: 480px; margin: 2rem auto; padding: 2rem;">
+      <div style="text-align: center; margin-bottom: 1.5rem;">
+        <div style="display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 12px; background: rgba(16, 185, 129, 0.12); color: #10b981; margin-bottom: 0.75rem;">
+          ${getIcon("graduation-cap", "", 24)}
+        </div>
+        <h2 style="margin: 0; color: var(--text-primary); font-size: 1.4rem; font-weight: 700;">Student Registration</h2>
+        <p style="color: var(--text-secondary); margin-top: 0.25rem; font-size: 0.85rem;">
+          Create your student account to build your career profile, parse resumes, and match job opportunities.
+        </p>
+      </div>
+
+      <form id="student-register-form" novalidate>
+        <div class="form-group" style="margin-bottom: 1rem;">
+          <label style="display: block; margin-bottom: 0.45rem; font-size: 0.875rem; font-weight: 600;">Full Name *</label>
+          <input type="text" id="reg-name" required placeholder="Vinay Nalavade" class="form-input" style="width: 100%;">
+        </div>
+
+        <div class="form-group" style="margin-bottom: 1rem;">
+          <label style="display: block; margin-bottom: 0.45rem; font-size: 0.875rem; font-weight: 600;">Email Address *</label>
+          <input type="email" id="reg-email" required placeholder="student@example.com" class="form-input" style="width: 100%;">
+        </div>
+
+        <div class="form-group" style="margin-bottom: 1rem;">
+          <label style="display: block; margin-bottom: 0.45rem; font-size: 0.875rem; font-weight: 600;">Password *</label>
+          <input type="password" id="reg-password" required minlength="6" placeholder="••••••••" class="form-input" style="width: 100%;">
+          <div id="reg-password-strength-container" style="display: none; margin-top: 0.5rem;"></div>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 1.5rem;">
+          <label style="display: block; margin-bottom: 0.45rem; font-size: 0.875rem; font-weight: 600;">Confirm Password *</label>
+          <input type="password" id="reg-confirm-password" required minlength="6" placeholder="••••••••" class="form-input" style="width: 100%;">
+        </div>
+
+        <button type="submit" id="reg-submit-btn" class="btn btn-primary" style="width: 100%; justify-content: center; gap: 0.5rem; padding: 0.65rem 1rem;">
+          Register as Student
+        </button>
+      </form>
+
+      <p style="text-align: center; margin-top: 1.5rem; font-size: 0.875rem; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 1.25rem;">
+        Already registered? <a href="#/login?role=student" style="color: var(--primary-color); font-weight: 600;">Sign In as Student</a>
+      </p>
+    </div>
+  `;
+}
+
+export function initRegisterListeners() {
+  const form = document.getElementById("student-register-form");
+  if (!form) return;
+
+  const nameInput = document.getElementById("reg-name");
+  const emailInput = document.getElementById("reg-email");
+  const passwordInput = document.getElementById("reg-password");
+  const confirmInput = document.getElementById("reg-confirm-password");
+  const strengthContainer = document.getElementById("reg-password-strength-container");
+  const submitBtn = document.getElementById("reg-submit-btn");
+
+  initPasswordToggle(form);
+
+  if (passwordInput && strengthContainer) {
+    initPasswordStrengthIndicator(passwordInput, strengthContainer);
+  }
+
+  let isSubmitting = false;
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    if (isSubmitting) return;
+
+    const full_name = (nameInput?.value || "").trim();
+    const email = (emailInput?.value || "").trim();
+    const password = passwordInput?.value || "";
+    const confirmPassword = confirmInput?.value || "";
+
+    if (!full_name || !email || !password || !confirmPassword) {
+      showToast("Please complete all required fields.", "danger");
+      return;
+    }
+    if (!validateFullName(full_name)) {
+      showToast("Please enter a valid full name.", "danger");
+      nameInput?.focus();
+      return;
+    }
+    if (!validateEmail(email)) {
+      showToast("Please enter a valid email address.", "danger");
+      emailInput?.focus();
+      return;
+    }
+    if (password.length < 6) {
+      showToast("Password must be at least 6 characters.", "danger");
+      passwordInput?.focus();
+      return;
+    }
+    if (password !== confirmPassword) {
+      showToast("Passwords do not match.", "danger");
+      confirmInput?.focus();
+      return;
+    }
+
+    isSubmitting = true;
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `${getIcon("spinner", "icon-spin", 16)} Registering...`;
+    }
+
+    try {
+      const data = await API.post("/auth/register", { full_name, email, password, account_type: "STUDENT" });
+      API.setToken(data.access_token);
+      store.setState({ user: data.user, activeOrgId: data.active_org_id });
+      showToast("Student account created successfully! Welcome to NxtMov.", "success");
+      window.location.hash = "#/dashboard";
+    } catch (err) {
+      showToast(err.message || "Registration failed.", "danger");
+    } finally {
+      isSubmitting = false;
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = "Register as Student";
+      }
+    }
+  };
+}
+
+/**
+ * 4. MENTOR APPLICATION VIEW ("Apply as Mentor")
+ */
+export function renderApplyMentor() {
+  return `
+    <div class="auth-card card" style="max-width: 580px; margin: 2rem auto; padding: 2rem;">
+      <div style="text-align: center; margin-bottom: 1.5rem;">
+        <div style="display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 12px; background: rgba(168, 85, 247, 0.12); color: #a855f7; margin-bottom: 0.75rem;">
+          ${getIcon("mentor", "", 24)}
+        </div>
+        <h2 style="margin: 0; color: var(--text-primary); font-size: 1.4rem; font-weight: 700;">Apply as a Mentor</h2>
+        <p style="color: var(--text-secondary); margin-top: 0.25rem; font-size: 0.85rem;">
+          Submit your academic/institutional details for review. An administrator will review and activate your mentor account.
+        </p>
+      </div>
+
+      <div id="mentor-app-status-box" style="display: none; margin-bottom: 1.25rem; padding: 1rem; border-radius: var(--radius-md); background: rgba(16, 185, 129, 0.1); border: 1px solid var(--accent-color); color: var(--accent-color); font-size: 0.875rem;"></div>
+
+      <form id="mentor-apply-form" novalidate>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+          <div class="form-group">
+            <label style="display: block; margin-bottom: 0.45rem; font-size: 0.875rem; font-weight: 600;">Full Name *</label>
+            <input type="text" id="mentor-name" required placeholder="Dr. Ramesh Kulkarni" class="form-input" style="width: 100%;">
+          </div>
+          <div class="form-group">
+            <label style="display: block; margin-bottom: 0.45rem; font-size: 0.875rem; font-weight: 600;">Official Institutional Email *</label>
+            <input type="email" id="mentor-email" required placeholder="ramesh@iitb.ac.in" class="form-input" style="width: 100%;">
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+          <div class="form-group">
+            <label style="display: block; margin-bottom: 0.45rem; font-size: 0.875rem; font-weight: 600;">Institute / University Name *</label>
+            <input type="text" id="mentor-institute" required placeholder="IIT Bombay" class="form-input" style="width: 100%;">
+          </div>
+          <div class="form-group">
+            <label style="display: block; margin-bottom: 0.45rem; font-size: 0.875rem; font-weight: 600;">Employee / Faculty ID *</label>
+            <input type="text" id="mentor-emp-id" required placeholder="FAC-2024-098" class="form-input" style="width: 100%;">
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+          <div class="form-group">
+            <label style="display: block; margin-bottom: 0.45rem; font-size: 0.875rem; font-weight: 600;">Department *</label>
+            <input type="text" id="mentor-department" required placeholder="Computer Science & Engg" class="form-input" style="width: 100%;">
+          </div>
+          <div class="form-group">
+            <label style="display: block; margin-bottom: 0.45rem; font-size: 0.875rem; font-weight: 600;">Designation *</label>
+            <input type="text" id="mentor-designation" required placeholder="Associate Professor" class="form-input" style="width: 100%;">
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+          <div class="form-group">
+            <label style="display: block; margin-bottom: 0.45rem; font-size: 0.875rem; font-weight: 600;">Password *</label>
+            <input type="password" id="mentor-password" required minlength="6" placeholder="••••••••" class="form-input" style="width: 100%;">
+          </div>
+          <div class="form-group">
+            <label style="display: block; margin-bottom: 0.45rem; font-size: 0.875rem; font-weight: 600;">Confirm Password *</label>
+            <input type="password" id="mentor-confirm-password" required minlength="6" placeholder="••••••••" class="form-input" style="width: 100%;">
+          </div>
+        </div>
+
+        <button type="submit" id="mentor-submit-btn" class="btn btn-primary" style="width: 100%; justify-content: center; gap: 0.5rem; padding: 0.65rem 1rem; background: #a855f7; border-color: #a855f7;">
+          Submit Mentor Application
+        </button>
+      </form>
+
+      <p style="text-align: center; margin-top: 1.5rem; font-size: 0.875rem; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 1.25rem;">
+        Already approved? <a href="#/login?role=mentor" style="color: #a855f7; font-weight: 600;">Mentor Login</a>
+      </p>
+    </div>
+  `;
+}
+
+export function initApplyMentorListeners() {
+  const form = document.getElementById("mentor-apply-form");
+  if (!form) return;
+
+  const nameInput = document.getElementById("mentor-name");
+  const emailInput = document.getElementById("mentor-email");
+  const instInput = document.getElementById("mentor-institute");
+  const empIdInput = document.getElementById("mentor-emp-id");
+  const deptInput = document.getElementById("mentor-department");
+  const desigInput = document.getElementById("mentor-designation");
+  const passInput = document.getElementById("mentor-password");
+  const confInput = document.getElementById("mentor-confirm-password");
+  const submitBtn = document.getElementById("mentor-submit-btn");
+  const statusBox = document.getElementById("mentor-app-status-box");
+
+  initPasswordToggle(form);
+
+  let isSubmitting = false;
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    if (isSubmitting) return;
+
+    const full_name = (nameInput?.value || "").trim();
+    const official_email = (emailInput?.value || "").trim();
+    const institute_name = (instInput?.value || "").trim();
+    const employee_id = (empIdInput?.value || "").trim();
+    const department = (deptInput?.value || "").trim();
+    const designation = (desigInput?.value || "").trim();
+    const password = passInput?.value || "";
+    const confirmPassword = confInput?.value || "";
+
+    if (!full_name || !official_email || !institute_name || !employee_id || !department || !designation || !password) {
+      showToast("Please complete all required fields.", "danger");
+      return;
+    }
+    if (!validateEmail(official_email)) {
+      showToast("Please enter a valid official email address.", "danger");
+      emailInput?.focus();
+      return;
+    }
+    if (password.length < 6) {
+      showToast("Password must be at least 6 characters.", "danger");
+      passInput?.focus();
+      return;
+    }
+    if (password !== confirmPassword) {
+      showToast("Passwords do not match.", "danger");
+      confInput?.focus();
+      return;
+    }
+
+    isSubmitting = true;
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `${getIcon("spinner", "icon-spin", 16)} Submitting Application...`;
+    }
+
+    try {
+      const res = await API.post("/auth/apply-mentor", {
+        full_name,
+        official_email,
+        institute_name,
+        employee_id,
+        department,
+        designation,
+        password
+      });
+
+      if (statusBox) {
+        statusBox.innerHTML = `
+          <strong>✓ Application Submitted!</strong><br>
+          ${res.message || 'Your application is under administrator review. You will be able to log in once approved.'}
+        `;
+        statusBox.style.display = "block";
+      }
+      showToast("Mentor application submitted for administrator approval.", "success");
+      form.reset();
+    } catch (err) {
+      showToast(err.message || "Failed to submit mentor application.", "danger");
+    } finally {
+      isSubmitting = false;
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = "Submit Mentor Application";
+      }
+    }
+  };
+}
+
+/**
+ * 5. ADMINISTRATOR BOOTSTRAP VIEW
+ */
+export function renderAdminBootstrap() {
+  return `
+    <div class="auth-card card" style="max-width: 480px; margin: 2rem auto; padding: 2rem;">
+      <div style="text-align: center; margin-bottom: 1.5rem;">
+        <div style="display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 12px; background: rgba(239, 68, 68, 0.12); color: #ef4444; margin-bottom: 0.75rem;">
+          ${getIcon("shield-check", "", 24)}
+        </div>
+        <h2 style="margin: 0; color: var(--text-primary); font-size: 1.4rem; font-weight: 700;">Administrator Bootstrap</h2>
+        <p style="color: var(--text-secondary); margin-top: 0.25rem; font-size: 0.85rem;">
+          Enter the backend server bootstrap secret to provision or initialize the primary Administrator account.
+        </p>
+      </div>
+
+      <form id="admin-bootstrap-form" novalidate>
+        <div class="form-group" style="margin-bottom: 1rem;">
+          <label style="display: block; margin-bottom: 0.45rem; font-size: 0.875rem; font-weight: 600;">Server Bootstrap Secret *</label>
+          <input type="password" id="boot-key" required placeholder="Enter backend bootstrap secret" class="form-input" style="width: 100%;">
+        </div>
+
+        <div class="form-group" style="margin-bottom: 1rem;">
+          <label style="display: block; margin-bottom: 0.45rem; font-size: 0.875rem; font-weight: 600;">Administrator Full Name *</label>
+          <input type="text" id="boot-name" required placeholder="System Administrator" class="form-input" style="width: 100%;">
+        </div>
+
+        <div class="form-group" style="margin-bottom: 1rem;">
+          <label style="display: block; margin-bottom: 0.45rem; font-size: 0.875rem; font-weight: 600;">Administrator Email *</label>
+          <input type="email" id="boot-email" required placeholder="admin@nxtmov.local" class="form-input" style="width: 100%;">
+        </div>
+
+        <div class="form-group" style="margin-bottom: 1.5rem;">
+          <label style="display: block; margin-bottom: 0.45rem; font-size: 0.875rem; font-weight: 600;">Password *</label>
+          <input type="password" id="boot-password" required minlength="6" placeholder="••••••••" class="form-input" style="width: 100%;">
+        </div>
+
+        <button type="submit" id="boot-submit-btn" class="btn btn-primary" style="width: 100%; justify-content: center; gap: 0.5rem; padding: 0.65rem 1rem; background: #ef4444; border-color: #ef4444;">
+          Bootstrap Administrator
+        </button>
+      </form>
+
+      <p style="text-align: center; margin-top: 1.5rem; font-size: 0.875rem; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 1.25rem;">
+        Return to <a href="#/login?role=admin" style="color: #ef4444; font-weight: 600;">Administrator Login</a>
+      </p>
+    </div>
+  `;
+}
+
+export function initAdminBootstrapListeners() {
+  const form = document.getElementById("admin-bootstrap-form");
+  if (!form) return;
+
+  const keyInput = document.getElementById("boot-key");
+  const nameInput = document.getElementById("boot-name");
+  const emailInput = document.getElementById("boot-email");
+  const passInput = document.getElementById("boot-password");
+  const submitBtn = document.getElementById("boot-submit-btn");
+
+  initPasswordToggle(form);
+
+  let isSubmitting = false;
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    if (isSubmitting) return;
+
+    const bootstrap_key = (keyInput?.value || "").trim();
+    const full_name = (nameInput?.value || "").trim();
+    const email = (emailInput?.value || "").trim();
+    const password = passInput?.value || "";
+
+    if (!bootstrap_key || !full_name || !email || !password) {
+      showToast("Please fill in all bootstrap fields.", "danger");
+      return;
+    }
+
+    isSubmitting = true;
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `${getIcon("spinner", "icon-spin", 16)} Provisioning Admin...`;
+    }
+
+    try {
+      const data = await API.post("/auth/admin/bootstrap", {
+        bootstrap_key,
+        full_name,
+        email,
+        password
+      });
+
+      API.setToken(data.access_token);
+      store.setState({ user: data.user, activeOrgId: data.active_org_id });
+      showToast("Administrator account initialized successfully!", "success");
+      window.location.hash = "#/dashboard";
+    } catch (err) {
+      showToast(err.message || "Administrator bootstrap failed. Verify secret key.", "danger");
+    } finally {
+      isSubmitting = false;
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = "Bootstrap Administrator";
+      }
+    }
+  };
+}
+
+/**
+ * Checks public authentication configuration on backend.
  */
 async function loadDemoModeConfig() {
   const container = document.getElementById("demo-credentials-container");
@@ -402,119 +804,8 @@ async function loadDemoModeConfig() {
       if (passElem && config.demo_password) passElem.textContent = config.demo_password;
     }
   } catch (err) {
-    // Non-critical fallback for local dev
+    // Non-critical fallback
   }
-}
-
-export function renderRegister() {
-  return `
-    <div class="auth-card card" style="max-width: 450px; margin: 2rem auto;">
-      <h2 style="text-align: center; margin-bottom: 0.5rem; color: var(--text-primary);">Create NxtMov Account</h2>
-      <p style="text-align: center; color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 0.875rem;">
-        Get your personal career and talent workspace in seconds.
-      </p>
-
-      <form id="register-form" novalidate>
-        <div class="form-group" style="margin-bottom: 1rem;">
-          <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 500;">Full Name *</label>
-          <input type="text" id="reg-name" required placeholder="Vinay Nalavade" class="form-input" style="width: 100%;">
-        </div>
-
-        <div class="form-group" style="margin-bottom: 1rem;">
-          <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 500;">Email Address *</label>
-          <input type="email" id="reg-email" required placeholder="vinay@example.com" class="form-input" style="width: 100%;">
-        </div>
-
-        <div class="form-group" style="margin-bottom: 1.5rem;">
-          <label style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 500;">Password *</label>
-          <input type="password" id="reg-password" required minlength="8" placeholder="••••••••" class="form-input" style="width: 100%;">
-          <div id="reg-password-strength-container" style="display: none; margin-top: 0.5rem;"></div>
-        </div>
-
-        <button type="submit" id="reg-submit-btn" class="btn btn-primary" style="width: 100%; justify-content: center; gap: 0.5rem;">
-          Create Account & Workspace
-        </button>
-      </form>
-
-      <p style="text-align: center; margin-top: 1.5rem; font-size: 0.875rem; color: var(--text-secondary);">
-        Already registered? <a href="#/login" style="color: var(--primary-color); font-weight: 600;">Log In</a>
-      </p>
-    </div>
-  `;
-}
-
-export function initRegisterListeners() {
-  const form = document.getElementById("register-form");
-  if (!form) return;
-
-  const nameInput = document.getElementById("reg-name");
-  const emailInput = document.getElementById("reg-email");
-  const passwordInput = document.getElementById("reg-password");
-  const strengthContainer = document.getElementById("reg-password-strength-container");
-  const submitBtn = document.getElementById("reg-submit-btn");
-
-  // Attach password visibility eye toggle
-  initPasswordToggle(form);
-
-  // Attach live password strength indicator
-  if (passwordInput && strengthContainer) {
-    initPasswordStrengthIndicator(passwordInput, strengthContainer);
-  }
-
-  let isSubmitting = false;
-
-  form.onsubmit = async (e) => {
-    e.preventDefault();
-    if (isSubmitting) return;
-
-    const full_name = (nameInput?.value || "").trim();
-    const email = (emailInput?.value || "").trim();
-    const password = passwordInput?.value || "";
-
-    // Input validations
-    if (!full_name || !email || !password) {
-      showToast("Please complete all required fields.", "danger");
-      return;
-    }
-    if (!validateFullName(full_name)) {
-      showToast("Please enter a valid full name (letters, spaces, and hyphens only).", "danger");
-      nameInput?.focus();
-      return;
-    }
-    if (!validateEmail(email)) {
-      showToast("Please enter a valid email address.", "danger");
-      emailInput?.focus();
-      return;
-    }
-    if (password.length < 6) {
-      showToast("Password does not meet the required security requirements.", "danger");
-      passwordInput?.focus();
-      return;
-    }
-
-    // Set loading state & disable submission
-    isSubmitting = true;
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.innerHTML = `${getIcon("spinner", "icon-spin", 16)} Provisioning Workspace...`;
-    }
-
-    try {
-      const data = await API.post("/auth/register", { full_name, email, password });
-      API.setToken(data.access_token);
-      store.setState({ user: data.user, activeOrgId: data.active_org_id });
-      showToast("Account created successfully. Welcome to NxtMov!", "success");
-      window.location.hash = "#/dashboard";
-    } catch (err) {
-      showToast(err.message, "danger");
-    } finally {
-      isSubmitting = false;
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = "Create Account & Workspace";
-      }
-    }
-  };
 }
 
 export function renderVerifyEmail() {
@@ -567,7 +858,7 @@ export async function initVerifyEmailListeners() {
     }
     showToast(res.message || "Email verified successfully!", "success");
   } catch (err) {
-    const errMsg = normalizeErrorMessage(err, "This verification link has expired. Please request a new one.");
+    const errMsg = err.message || "This verification link has expired. Please request a new one.";
     if (statusText) {
       statusText.innerHTML = `<span style="color: var(--danger-color); font-weight: 500;">${errMsg}</span>`;
     }

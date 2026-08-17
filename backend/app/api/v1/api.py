@@ -2,13 +2,14 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import (
     health, auth, organizations, companies, contacts, activity,
     import_export, requirements, candidates, submissions, applications, dev_seed,
-    profile, resumes, recommendations, notifications, interactions, mentor
+    profile, resumes, recommendations, notifications, interactions, mentor, admin
 )
 
 api_router = APIRouter()
 
 api_router.include_router(health.router, tags=["Health"])
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+api_router.include_router(admin.router, prefix="/admin", tags=["Administrator Management & Approvals"])
 api_router.include_router(profile.router, prefix="/profile", tags=["Student Talent Profile & Settings"])
 api_router.include_router(resumes.router, prefix="/resumes", tags=["Resume Intelligence & Parsing"])
 api_router.include_router(recommendations.router, prefix="/recommendations", tags=["Intelligent Role Matching"])

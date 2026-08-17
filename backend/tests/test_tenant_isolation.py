@@ -1,23 +1,26 @@
 import uuid
 from fastapi.testclient import TestClient
 from app.main import app
+from app.core.config import settings
 
 client = TestClient(app)
 
 def test_strict_multi_tenant_data_isolation():
     uid = uuid.uuid4().hex[:6]
-    # 1. Register User A in Tenant A
-    user_a_res = client.post("/api/v1/auth/register", json={
-        "full_name": "User Alpha",
+    # 1. Bootstrap Admin User A in Tenant A
+    user_a_res = client.post("/api/v1/auth/admin/bootstrap", json={
+        "bootstrap_key": settings.ADMIN_BOOTSTRAP_SECRET,
+        "full_name": "User Alpha Admin",
         "email": f"user_a_{uid}@tenant.com",
         "password": "Password123!"
     }).json()
     token_a = user_a_res["access_token"]
     headers_a = {"Authorization": f"Bearer {token_a}"}
 
-    # 2. Register User B in Tenant B
-    user_b_res = client.post("/api/v1/auth/register", json={
-        "full_name": "User Beta",
+    # 2. Bootstrap Admin User B in Tenant B
+    user_b_res = client.post("/api/v1/auth/admin/bootstrap", json={
+        "bootstrap_key": settings.ADMIN_BOOTSTRAP_SECRET,
+        "full_name": "User Beta Admin",
         "email": f"user_b_{uid}@tenant.com",
         "password": "Password123!"
     }).json()

@@ -1,17 +1,19 @@
 from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 from app.main import app
+from app.core.config import settings
 
 client = TestClient(app)
 
 def get_auth_header():
     email = "actuser@example.com"
-    reg = client.post("/api/v1/auth/register", json={
-        "full_name": "Activity User",
+    boot = client.post("/api/v1/auth/admin/bootstrap", json={
+        "bootstrap_key": settings.ADMIN_BOOTSTRAP_SECRET,
+        "full_name": "Activity Admin",
         "email": email,
         "password": "Password123!"
     })
-    token = reg.json()["access_token"]
+    token = boot.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
 def test_log_call_and_create_followup():

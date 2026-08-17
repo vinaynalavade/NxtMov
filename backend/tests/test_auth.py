@@ -90,14 +90,14 @@ def test_login_invalid_password():
 
     response = client.post("/api/v1/auth/login", data={"username": "user1@example.com", "password": "WrongPassword"})
     assert response.status_code == 401
-    assert "Incorrect password" in response.json()["detail"]
+    assert "Invalid email or password" in response.json()["detail"]
 
 def test_login_nonexistent_user():
     login_rate_limiter._records.clear()
 
     response = client.post("/api/v1/auth/login", data={"username": "nonexistent@example.com", "password": "Password123!"})
     assert response.status_code == 401
-    assert "No account found" in response.json()["detail"]
+    assert "Invalid email or password" in response.json()["detail"]
 
 def test_login_rate_limiting():
     login_rate_limiter._records.clear()

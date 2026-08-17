@@ -1,6 +1,7 @@
 from app.core.database import Base
 from app.models.base import TimestampMixin, AuditLog
-from app.models.user import User
+from app.models.user import User, AccountType, AccountStatus
+from app.models.mentor_application import MentorApplication, MentorApplicationStatus
 from app.models.organization import Organization, OrganizationMembership, OrgType, OrgRole, Invitation, InvitationStatus
 from app.models.company import Company, Contact, ContactStatus
 from app.models.candidate import Candidate, CandidateStatus, Document, DocumentType

@@ -1,8 +1,15 @@
 import { api } from "./api.js";
 import { store } from "./store.js";
 import { updateSidebarActiveRoute } from "./sidebar.js";
-import { renderLogin, initLoginListeners, renderRegister, initRegisterListeners, renderVerifyEmail, initVerifyEmailListeners } from "./views/auth.js";
+import {
+  renderLogin, initLoginListeners,
+  renderRegister, initRegisterListeners,
+  renderApplyMentor, initApplyMentorListeners,
+  renderAdminBootstrap, initAdminBootstrapListeners,
+  renderVerifyEmail, initVerifyEmailListeners
+} from "./views/auth.js";
 import { renderDashboard, initDashboardListeners } from "./views/dashboard.js";
+import { renderAdminView, initAdminListeners } from "./views/admin.js";
 import { renderCompanies, initCompaniesListeners } from "./views/companies.js";
 import { renderContacts, initContactsListeners } from "./views/contacts.js";
 import { renderFollowups, initFollowupsListeners } from "./views/followups.js";
@@ -23,8 +30,15 @@ import { getCurrentUserRole, isRouteAllowed, ROLE_CONFIG } from "./permissions.j
 const routes = {
   "/login": { render: renderLogin, init: initLoginListeners, public: true },
   "/register": { render: renderRegister, init: initRegisterListeners, public: true },
+  "/apply-mentor": { render: renderApplyMentor, init: initApplyMentorListeners, public: true },
+  "/admin-bootstrap": { render: renderAdminBootstrap, init: initAdminBootstrapListeners, public: true },
   "/verify-email": { render: renderVerifyEmail, init: initVerifyEmailListeners, public: true },
   "/dashboard": { render: renderDashboard, init: initDashboardListeners },
+  "/admin": { render: renderAdminView, init: initAdminListeners },
+  "/admin-applications": { render: renderAdminView, init: initAdminListeners },
+  "/admin-students": { render: renderAdminView, init: initAdminListeners },
+  "/admin-mentors": { render: renderAdminView, init: initAdminListeners },
+  "/admin-users": { render: renderAdminView, init: initAdminListeners },
   "/profile": { render: renderProfile, init: initProfileListeners },
   "/resume": { render: renderResume, init: initResumeListeners },
   "/recommendations": { render: renderRecommendations, init: initRecommendationsListeners },

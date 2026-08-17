@@ -32,6 +32,8 @@ def create_access_token(
     subject: Union[str, int],
     org_id: int,
     role: str = "ADMIN",
+    account_type: Optional[str] = None,
+    status: Optional[str] = "ACTIVE",
     expires_delta: Optional[timedelta] = None
 ) -> str:
     if expires_delta:
@@ -44,6 +46,8 @@ def create_access_token(
         "sub": str(subject),
         "org_id": org_id,
         "role": role,
+        "account_type": account_type or role,
+        "status": status or "ACTIVE",
     }
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt

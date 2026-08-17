@@ -1,112 +1,102 @@
 // ==============================================================================
-// NxtMov Canonical RBAC & Permissions Matrix (Frontend)
+// NxtMov Authoritative Account Types & Permissions Matrix (Frontend)
 // ==============================================================================
 
 export const ROLES = {
   ADMIN: "ADMIN",
   MENTOR: "MENTOR",
-  RECRUITER: "RECRUITER",
   STUDENT: "STUDENT",
-  COUNSELOR: "COUNSELOR"
+  RECRUITER: "RECRUITER"
 };
 
 export const ROLE_CONFIG = {
   ADMIN: {
     name: "ADMIN",
-    title: "Workspace Administrator",
+    title: "Administrator",
     badgeClass: "badge-admin",
     icon: "shield-check",
-    description: "Full workspace configuration, team management, and operations control."
+    description: "Platform oversight, mentor approvals, user governance, and system operations."
   },
   MENTOR: {
     name: "MENTOR",
-    title: "Student Mentor",
+    title: "Mentor",
     badgeClass: "badge-mentor",
     icon: "user-check",
-    description: "Guiding assigned students, reviewing ATS readiness, and interview prep."
-  },
-  RECRUITER: {
-    name: "RECRUITER",
-    title: "Talent Partner / Recruiter",
-    badgeClass: "badge-recruiter",
-    icon: "briefcase",
-    description: "Candidate sourcing, employer client CRM, submissions, and placements."
+    description: "Student progress monitoring, guidance sessions, ATS readiness, and feedback."
   },
   STUDENT: {
     name: "STUDENT",
-    title: "Student / Talent",
+    title: "Student",
     badgeClass: "badge-student",
     icon: "graduation-cap",
     description: "Personal resume intelligence, opportunity matching, and application tracking."
   },
-  COUNSELOR: {
-    name: "COUNSELOR",
-    title: "Career Counselor",
-    badgeClass: "badge-counselor",
-    icon: "compass",
-    description: "Career advisory, student assessment, and placement guidance."
+  RECRUITER: {
+    name: "RECRUITER",
+    title: "Recruiter",
+    badgeClass: "badge-recruiter",
+    icon: "briefcase",
+    description: "Candidate sourcing, client mandates, submissions, and placements."
   }
 };
 
-// Route access control matrix by Canonical Role
+// Route access control matrix by Canonical Account Type
 export const ROUTE_PERMISSIONS = {
-  "dashboard": ["ADMIN", "MENTOR", "RECRUITER", "STUDENT", "COUNSELOR"],
-  "mentor-dashboard": ["ADMIN", "MENTOR", "COUNSELOR", "RECRUITER"],
-  "student-dashboard": ["STUDENT", "ADMIN"],
-  "profile": ["ADMIN", "MENTOR", "RECRUITER", "STUDENT", "COUNSELOR"],
-  "resumes": ["STUDENT", "ADMIN", "MENTOR", "COUNSELOR"],
-  "recommendations": ["STUDENT", "ADMIN", "MENTOR", "COUNSELOR"],
-  "applications": ["ADMIN", "MENTOR", "RECRUITER", "STUDENT", "COUNSELOR"],
-  "opportunities": ["ADMIN", "MENTOR", "RECRUITER", "STUDENT", "COUNSELOR"],
-  "candidates": ["ADMIN", "RECRUITER", "COUNSELOR"],
-  "companies": ["ADMIN", "RECRUITER", "COUNSELOR"],
-  "contacts": ["ADMIN", "RECRUITER", "COUNSELOR"],
-  "activity": ["ADMIN", "RECRUITER", "COUNSELOR"],
+  "dashboard": ["ADMIN", "MENTOR", "STUDENT", "RECRUITER"],
+  "profile": ["ADMIN", "MENTOR", "STUDENT", "RECRUITER"],
+  "resume": ["STUDENT", "ADMIN", "MENTOR"],
+  "resumes": ["STUDENT", "ADMIN", "MENTOR"],
+  "recommendations": ["STUDENT", "ADMIN", "MENTOR"],
+  "applications": ["ADMIN", "MENTOR", "STUDENT", "RECRUITER"],
+  "opportunities": ["ADMIN", "MENTOR", "STUDENT", "RECRUITER"],
+  "mentor": ["MENTOR", "ADMIN"],
+  "admin": ["ADMIN"],
+  "admin-applications": ["ADMIN"],
+  "admin-students": ["ADMIN"],
+  "admin-mentors": ["ADMIN"],
+  "admin-users": ["ADMIN"],
+  "candidates": ["ADMIN", "RECRUITER"],
+  "companies": ["ADMIN", "RECRUITER"],
+  "contacts": ["ADMIN", "RECRUITER"],
+  "followups": ["ADMIN", "MENTOR", "STUDENT", "RECRUITER"],
   "submissions": ["ADMIN", "RECRUITER"],
-  "placements": ["ADMIN", "RECRUITER"],
   "import": ["ADMIN", "RECRUITER"],
-  "team": ["ADMIN"],
-  "workspace-settings": ["ADMIN"]
+  "team": ["ADMIN"]
 };
 
 /**
- * Gets the current active role string from store / token
+ * Gets the current authoritative account type from store (Backend Source of Truth)
  */
 export function getCurrentUserRole(store) {
   if (!store || !store.state) return ROLES.STUDENT;
-  
-  // 1. Check user.active_organization.role
-  if (store.state.user?.active_organization?.role) {
-    const r = String(store.state.user.active_organization.role).toUpperCase();
-    return r === "CANDIDATE" ? ROLES.STUDENT : r;
+
+  // 1. Direct Backend Source of Truth: user.account_type
+  if (store.state.user?.account_type) {
+    const act = String(store.state.user.account_type).toUpperCase();
+    if (act === "CANDIDATE") return ROLES.STUDENT;
+    if (act in ROLES) return act;
   }
 
-  // 2. Check token payload if stored in state or localStorage
+  // 2. Token payload fallback
   const token = store.state.token || (typeof localStorage !== "undefined" && localStorage.getItem("nxtmov_token"));
   if (token) {
     try {
       const parts = token.split(".");
       if (parts.length === 3) {
         const payload = JSON.parse(atob(parts[1]));
+        if (payload.account_type) {
+          const act = String(payload.account_type).toUpperCase();
+          if (act === "CANDIDATE") return ROLES.STUDENT;
+          if (act in ROLES) return act;
+        }
         if (payload.role) {
           const r = String(payload.role).toUpperCase();
-          return r === "CANDIDATE" ? ROLES.STUDENT : r;
+          if (r === "CANDIDATE") return ROLES.STUDENT;
+          if (r in ROLES) return r;
         }
       }
     } catch (e) {
-      // fallback
-    }
-  }
-
-  // 3. Check user roles array for activeOrgId match
-  if (store.state.user?.roles && store.state.user.roles.length > 0) {
-    const activeOrgId = store.state.activeOrgId || store.state.user?.active_organization?.id;
-    if (activeOrgId) {
-      const match = store.state.user.roles.find(r => r.organization_id === activeOrgId);
-      if (match && match.role) {
-        const r = String(match.role).toUpperCase();
-        return r === "CANDIDATE" ? ROLES.STUDENT : r;
-      }
+      // ignore
     }
   }
 
@@ -114,7 +104,7 @@ export function getCurrentUserRole(store) {
 }
 
 /**
- * Verifies if a given role is allowed to access a route
+ * Verifies if a given role / account type is allowed to access a route
  */
 export function isRouteAllowed(routeKey, role) {
   if (!routeKey) return true;
@@ -123,12 +113,10 @@ export function isRouteAllowed(routeKey, role) {
 
   const allowedRoles = ROUTE_PERMISSIONS[cleanRoute];
   if (!allowedRoles) {
-    // Default open for unrecognized public/common routes
     return true;
   }
 
   const userRole = (role || ROLES.STUDENT).toUpperCase();
-  // Map legacy CANDIDATE to STUDENT
   const normalizedRole = userRole === "CANDIDATE" ? ROLES.STUDENT : userRole;
 
   return allowedRoles.includes(normalizedRole);

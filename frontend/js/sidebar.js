@@ -7,58 +7,84 @@ import { getCurrentUserRole, ROLE_CONFIG } from "./permissions.js";
    Navigation Schema — Single source of truth for all sidebar links
    ================================================================ */
 const NAVIGATION_SCHEMA = [
+  // ================================================================
+  // 1. STUDENT NAVIGATION SCHEMA
+  // ================================================================
   {
-    category: "OVERVIEW",
-    roles: ["STUDENT", "MENTOR", "COUNSELOR", "RECRUITER", "ADMIN"],
+    category: "CAREER DASHBOARD",
+    roles: ["STUDENT"],
     items: [
-      { path: "/dashboard", label: "Dashboard", icon: "dashboard" }
-    ]
-  },
-  {
-    category: "CAREER & ATS",
-    roles: ["STUDENT", "ADMIN"],
-    items: [
-      { path: "/profile", label: "My Profile", icon: "profile" },
+      { path: "/dashboard", label: "Career Progress", icon: "dashboard" },
+      { path: "/profile", label: "Profile", icon: "profile" },
       { path: "/resume", label: "Resume & ATS", icon: "resume" },
-      { path: "/recommendations", label: "Role Matches", icon: "recommendations" },
-      { path: "/applications", label: "My Applications", icon: "applications" },
-      { path: "/opportunities", label: "Job Openings", icon: "opportunities" }
+      { path: "/opportunities", label: "Jobs", icon: "opportunities" },
+      { path: "/applications", label: "Applications", icon: "applications" },
+      { path: "/recommendations", label: "Recommendations", icon: "recommendations" },
+      { path: "/mentor", label: "Mentors", icon: "mentor" }
     ]
   },
   {
-    category: "MENTORSHIP",
-    roles: ["MENTOR", "COUNSELOR"],
+    category: "PREFERENCES",
+    roles: ["STUDENT"],
     items: [
+      { path: "/profile", label: "Settings", icon: "settings" }
+    ]
+  },
+
+  // ================================================================
+  // 2. MENTOR NAVIGATION SCHEMA
+  // ================================================================
+  {
+    category: "STUDENT GUIDANCE",
+    roles: ["MENTOR"],
+    items: [
+      { path: "/dashboard", label: "Dashboard", icon: "dashboard" },
       { path: "/mentor", label: "My Students", icon: "mentor" },
-      { path: "/opportunities", label: "Job Openings", icon: "opportunities" },
-      { path: "/applications", label: "Applications Pipeline", icon: "applications" }
+      { path: "/mentor", label: "Student Progress", icon: "chart" },
+      { path: "/applications", label: "Mentorship Requests", icon: "applications" },
+      { path: "/followups", label: "Sessions", icon: "clock" },
+      { path: "/mentor", label: "Feedback", icon: "message-square" }
     ]
   },
   {
-    category: "RECRUITMENT DESK",
-    roles: ["RECRUITER", "ADMIN", "COUNSELOR"],
+    category: "ACCOUNT",
+    roles: ["MENTOR"],
     items: [
-      { path: "/candidates", label: "Candidate Roster", icon: "candidates" },
-      { path: "/opportunities", label: "Job Openings", icon: "opportunities" },
-      { path: "/applications", label: "Applications Pipeline", icon: "applications" },
-      { path: "/submissions", label: "Client Submissions", icon: "submissions" }
+      { path: "/profile", label: "Profile", icon: "profile" },
+      { path: "/profile", label: "Settings", icon: "settings" }
     ]
   },
+
+  // ================================================================
+  // 3. ADMINISTRATOR NAVIGATION SCHEMA
+  // ================================================================
   {
-    category: "EMPLOYER CRM",
-    roles: ["RECRUITER", "ADMIN", "COUNSELOR"],
-    items: [
-      { path: "/companies", label: "Companies", icon: "companies" },
-      { path: "/contacts", label: "HR Contacts", icon: "contacts" },
-      { path: "/followups", label: "Follow-ups", icon: "followups" }
-    ]
-  },
-  {
-    category: "WORKSPACE & TEAM",
+    category: "ADMIN OVERVIEW",
     roles: ["ADMIN"],
     items: [
-      { path: "/team", label: "Team & Workspaces", icon: "team" },
-      { path: "/import", label: "Data Importer", icon: "import" }
+      { path: "/dashboard", label: "Admin Dashboard", icon: "dashboard" }
+    ]
+  },
+  {
+    category: "PEOPLE & APPROVALS",
+    roles: ["ADMIN"],
+    items: [
+      { path: "/admin-students", label: "Students", icon: "graduation-cap" },
+      { path: "/admin-mentors", label: "Mentors", icon: "mentor" },
+      { path: "/admin-applications", label: "Mentor Applications", icon: "shield-check" },
+      { path: "/admin-users", label: "Users & Roles", icon: "users" },
+      { path: "/admin-applications", label: "Approvals", icon: "check-circle" }
+    ]
+  },
+  {
+    category: "GOVERNANCE & SYSTEM",
+    roles: ["ADMIN"],
+    items: [
+      { path: "/team", label: "Organizations", icon: "team" },
+      { path: "/team", label: "Roles & Permissions", icon: "lock" },
+      { path: "/candidates", label: "Reports & Talent Pool", icon: "candidates" },
+      { path: "/import", label: "Data Importer", icon: "import" },
+      { path: "/admin-users", label: "Audit Logs & Settings", icon: "settings" }
     ]
   }
 ];

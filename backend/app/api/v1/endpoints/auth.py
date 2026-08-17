@@ -13,12 +13,15 @@ from app.core.tenant import get_current_user, TenantContext
 from app.core.rate_limiter import check_login_rate_limit, reset_login_rate_limit, check_register_rate_limit
 from app.services.sms_service import get_sms_provider, normalize_phone_number, otp_rate_limiter
 from app.services.email_service import get_email_provider, generate_verification_url
-from app.models.user import User
+from app.models.user import User, AccountType, AccountStatus
+from app.models.mentor_application import MentorApplication, MentorApplicationStatus
 from app.models.organization import Organization, OrganizationMembership, OrgType, OrgRole
 from app.models.candidate import Candidate, CandidateStatus
 from app.models.student_profile import StudentProfile
 from app.schemas.user import (
-    UserCreate, UserResponse, Token,
+    UserCreate, StudentRegisterRequest, MentorApplicationCreate, MentorApplicationResponse,
+    AdminBootstrapRequest, AdminInviteRequest, UserLogin, UserResponse, Token,
+    ActiveOrgInfo, UserRoleInfo,
     EmailVerifyRequest, EmailVerifyConfirm,
     PhoneOTPRequest, PhoneOTPConfirm,
     ForgotPasswordRequest, ResetPasswordRequest
@@ -30,9 +33,8 @@ _demo_lock = threading.Lock()
 
 def ensure_demo_user_exists(db: Session):
     """
-    Idempotently and reliably provisions the demo user, workspace organization,
-    organization membership, candidate record, and student profile.
-    Guarantees deterministic login under demo mode across restarts and deployments.
+    Idempotently and reliably provisions the demo user with ADMIN account_type,
+    along with student and mentor workspaces for test/eval convenience.
     """
     if not settings.NXTMOV_DEMO_MODE:
         return
@@ -47,9 +49,12 @@ def ensure_demo_user_exists(db: Session):
                 user = User(
                     email=demo_email,
                     hashed_password=hashed_pwd,
-                    full_name="Demo User",
+                    full_name="Demo Administrator",
                     phone="+91 99999 00000",
+                    account_type=AccountType.ADMIN,
+                    status=AccountStatus.ACTIVE,
                     is_active=True,
+                    is_superuser=True,
                     is_email_verified=True,
                     is_phone_verified=True
                 )
@@ -57,11 +62,15 @@ def ensure_demo_user_exists(db: Session):
                 db.commit()
                 db.refresh(user)
             else:
-                # Ensure password hash is valid, active, and verified
                 needs_commit = False
                 if not verify_password(settings.DEMO_USER_PASSWORD, user.hashed_password) or not user.is_active:
                     user.hashed_password = hashed_pwd
                     user.is_active = True
+                    needs_commit = True
+                if user.account_type != AccountType.ADMIN or user.status != AccountStatus.ACTIVE or not user.is_superuser:
+                    user.account_type = AccountType.ADMIN
+                    user.status = AccountStatus.ACTIVE
+                    user.is_superuser = True
                     needs_commit = True
                 if not user.is_email_verified or not user.is_phone_verified:
                     user.is_email_verified = True
@@ -71,12 +80,11 @@ def ensure_demo_user_exists(db: Session):
                     db.commit()
                     db.refresh(user)
 
-            # Check or create demo organizations and memberships for all canonical roles
+            # Check or create demo organizations and memberships
             demo_roles = [
                 ("demo-workspace", "Demo Workspace", OrgType.CONSULTANCY, OrgRole.ADMIN),
                 ("demo-student-hub", "Student Career Hub", OrgType.INDIVIDUAL, OrgRole.STUDENT),
                 ("demo-mentor-workspace", "Student Mentorship Desk", OrgType.CONSULTANCY, OrgRole.MENTOR),
-                ("demo-recruiter-workspace", "Talent Sourcing & Recruitment", OrgType.CONSULTANCY, OrgRole.RECRUITER),
             ]
 
             for slug, name, otype, o_role in demo_roles:
@@ -104,11 +112,8 @@ def ensure_demo_user_exists(db: Session):
                     )
                     db.add(d_mem)
                     db.commit()
-                elif d_mem.role != o_role:
-                    d_mem.role = o_role
-                    db.commit()
 
-                # Check or create linked candidate
+                # Linked candidate & student profile
                 d_cand = db.query(Candidate).filter(
                     Candidate.organization_id == d_org.id,
                     Candidate.email == user.email
@@ -126,7 +131,6 @@ def ensure_demo_user_exists(db: Session):
                     db.commit()
                     db.refresh(d_cand)
 
-                # Check or create student profile
                 d_prof = db.query(StudentProfile).filter(
                     StudentProfile.organization_id == d_org.id,
                     StudentProfile.user_id == user.id
@@ -141,16 +145,8 @@ def ensure_demo_user_exists(db: Session):
                     )
                     db.add(d_prof)
                     db.commit()
-        except Exception as e:
+        except Exception:
             db.rollback()
-
-from app.schemas.user import (
-    UserCreate, UserResponse, Token, ActiveOrgInfo, UserRoleInfo,
-    EmailVerifyRequest, EmailVerifyConfirm,
-    PhoneOTPRequest, PhoneOTPConfirm,
-    ForgotPasswordRequest, ResetPasswordRequest
-)
-from app.schemas.organization import OrganizationResponse, WorkspaceSwitchRequest
 
 def make_user_response(
     user: User,
@@ -168,8 +164,8 @@ def make_user_response(
 
     roles_list = []
     active_org_info = None
-    resolved_permissions = []
-    active_role_str = "STUDENT"
+    account_type_str = user.account_type.value if hasattr(user.account_type, "value") else str(user.account_type).upper()
+    status_str = user.status.value if hasattr(user.status, "value") else str(user.status).upper()
 
     for m in memberships:
         r_str = m.role.value if hasattr(m.role, "value") else str(m.role)
@@ -182,59 +178,41 @@ def make_user_response(
             organization_name=org_name
         ))
 
-        # Check if this membership matches the requested active_org_id or active_role
-        is_org_match = active_org_id is not None and int(m.organization_id) == int(active_org_id)
-        is_role_match = active_role is not None and r_str.upper() == active_role.upper()
-
-        if is_org_match or (active_org_info is None and is_role_match):
-            active_role_str = r_str
+        if active_org_id is not None and int(m.organization_id) == int(active_org_id):
             active_org_info = ActiveOrgInfo(
                 id=m.organization_id,
                 name=org_name,
                 role=r_str
             )
-            resolved_permissions = get_role_permissions(r_str, is_superuser=user.is_superuser)
 
-    # If active_role is requested (e.g. ADMIN) and user is superuser, resolve ADMIN context
-    if active_role and active_role.upper() == "ADMIN" and user.is_superuser and not active_org_info:
-        active_role_str = "ADMIN"
-        first_org = memberships[0] if memberships else None
-        active_org_info = ActiveOrgInfo(
-            id=first_org.organization_id if first_org else 0,
-            name=first_org.organization.name if (first_org and first_org.organization) else "Admin Workspace",
-            role="ADMIN"
-        )
-        resolved_permissions = get_role_permissions("ADMIN", is_superuser=True)
-
-    # Fallback to first membership ONLY IF active_org_info is still None and no active_role was requested
-    if not active_org_info and memberships and not active_role:
+    if not active_org_info and memberships:
         first_m = memberships[0]
         first_r = first_m.role.value if hasattr(first_m.role, "value") else str(first_m.role)
         if first_r.upper() == "CANDIDATE":
             first_r = "STUDENT"
-        active_role_str = first_r
         active_org_info = ActiveOrgInfo(
             id=first_m.organization_id,
             name=first_m.organization.name if first_m.organization else "Workspace",
             role=first_r
         )
-        resolved_permissions = get_role_permissions(first_r, is_superuser=user.is_superuser)
 
-    if not active_org_info:
-        resolved_permissions = get_role_permissions(active_role or "STUDENT", is_superuser=user.is_superuser)
+    # Authoritative permissions derived directly from account_type and superuser status
+    resolved_permissions = get_role_permissions(user.account_type, is_superuser=user.is_superuser)
 
     return UserResponse(
         id=user.id,
         email=user.email,
         full_name=user.full_name,
         phone=user.phone,
+        account_type=account_type_str,
+        status=status_str,
         is_active=user.is_active,
         is_email_verified=user.is_email_verified,
         is_phone_verified=user.is_phone_verified,
         is_superuser=user.is_superuser,
-        avatar_url=user.avatar_url,
-        headline=user.headline,
-        location=user.location,
+        avatar_url=getattr(user, "avatar_url", None),
+        headline=getattr(user, "headline", None),
+        location=getattr(user, "location", None),
         active_organization=active_org_info,
         roles=roles_list,
         permissions=resolved_permissions
@@ -253,14 +231,17 @@ def get_auth_config(db: Session = Depends(get_db)):
         "rate_limiting_enabled": True
     }
 
-@router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED, summary="User Self-Registration")
+@router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED, summary="Student Self-Registration")
 def register(request: Request, user_in: UserCreate, db: Session = Depends(get_db)):
     # 1. Rate limiting
     check_register_rate_limit(request)
 
     # 2. Validation
-    name_clean = user_in.full_name.strip()
-    if not name_clean or len(name_clean) < 2 or any(ch.isdigit() for ch in name_clean) or "@" in name_clean or "http://" in name_clean or "https://" in name_clean:
+    name_clean = user_in.full_name.strip() if user_in.full_name else ""
+    if not name_clean:
+        name_clean = user_in.email.split("@")[0].replace(".", " ").capitalize()
+
+    if len(name_clean) < 2 or any(ch.isdigit() for ch in name_clean) or "@" in name_clean or "http://" in name_clean or "https://" in name_clean:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Please enter a valid full name."
@@ -276,7 +257,7 @@ def register(request: Request, user_in: UserCreate, db: Session = Depends(get_db
     if len(user_in.password) < 6:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password does not meet the required security requirements."
+            detail="Password must be at least 6 characters long."
         )
 
     existing_user = db.query(User).filter(User.email == email_clean).first()
@@ -286,20 +267,23 @@ def register(request: Request, user_in: UserCreate, db: Session = Depends(get_db
             detail="An account with this email already exists."
         )
 
-    # 3. Create User
+    # 3. Create Student User (Authoritative STUDENT account_type, ACTIVE lifecycle)
     hashed_password = get_password_hash(user_in.password)
     user = User(
         email=email_clean,
         hashed_password=hashed_password,
         full_name=name_clean,
         phone=user_in.phone.strip() if user_in.phone else None,
+        account_type=AccountType.STUDENT,
+        status=AccountStatus.ACTIVE,
+        is_active=True,
         is_email_verified=False,
         is_phone_verified=False
     )
     db.add(user)
     db.flush()
 
-    # 4. Create Default Individual Workspace
+    # 4. Create Default Student Workspace
     org_slug = f"workspace-{user.id}-{re.sub(r'[^a-z0-9]', '', email_clean.split('@')[0])[:12]}"
     personal_org = Organization(
         name=f"{user.full_name}'s Workspace",
@@ -313,7 +297,7 @@ def register(request: Request, user_in: UserCreate, db: Session = Depends(get_db
     membership = OrganizationMembership(
         user_id=user.id,
         organization_id=personal_org.id,
-        role=OrgRole.ADMIN
+        role=OrgRole.STUDENT
     )
     db.add(membership)
 
@@ -323,7 +307,8 @@ def register(request: Request, user_in: UserCreate, db: Session = Depends(get_db
         full_name=user.full_name,
         email=user.email,
         phone=user.phone,
-        status=CandidateStatus.NEW
+        status=CandidateStatus.NEW,
+        source="Student Self-Registration"
     )
     db.add(cand)
     db.flush()
@@ -338,13 +323,211 @@ def register(request: Request, user_in: UserCreate, db: Session = Depends(get_db
     db.commit()
     db.refresh(user)
 
-    access_token = create_access_token(subject=user.id, org_id=personal_org.id, role=OrgRole.ADMIN.value)
+    access_token = create_access_token(
+        subject=user.id,
+        org_id=personal_org.id,
+        role="STUDENT",
+        account_type="STUDENT",
+        status="ACTIVE"
+    )
 
     return Token(
         access_token=access_token,
         token_type="bearer",
         active_org_id=personal_org.id,
-        user=make_user_response(user, db, active_org_id=personal_org.id, active_role="ADMIN")
+        user=make_user_response(user, db, active_org_id=personal_org.id, active_role="STUDENT")
+    )
+
+@router.post("/apply-mentor", summary="Submit Mentor Application")
+def apply_mentor(
+    request: Request,
+    mentor_in: MentorApplicationCreate,
+    db: Session = Depends(get_db)
+):
+    check_register_rate_limit(request)
+
+    name_clean = mentor_in.full_name.strip()
+    if not name_clean or len(name_clean) < 2 or any(ch.isdigit() for ch in name_clean):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please enter a valid full name."
+        )
+
+    email_clean = mentor_in.official_email.strip().lower()
+    if not re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", email_clean):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please enter a valid official institutional email address."
+        )
+
+    if len(mentor_in.password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 6 characters long."
+        )
+
+    if not mentor_in.institute_name.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Institute name is required.")
+    if not mentor_in.employee_id.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Employee / Faculty ID is required.")
+
+    # Check existing user
+    existing_user = db.query(User).filter(User.email == email_clean).first()
+    if existing_user:
+        if existing_user.account_type == AccountType.MENTOR and existing_user.status == AccountStatus.PENDING:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A mentor application for this official email is already pending review."
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An account with this email address already exists."
+        )
+
+    # Check pending mentor application
+    existing_app = db.query(MentorApplication).filter(
+        MentorApplication.official_email == email_clean,
+        MentorApplication.status == MentorApplicationStatus.PENDING
+    ).first()
+    if existing_app:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A mentor application for this official email is already pending review."
+        )
+
+    # Create User with PENDING status (Cannot access Mentor dashboard until Approved)
+    hashed_password = get_password_hash(mentor_in.password)
+    user = User(
+        email=email_clean,
+        hashed_password=hashed_password,
+        full_name=name_clean,
+        phone=mentor_in.phone.strip() if mentor_in.phone else None,
+        account_type=AccountType.MENTOR,
+        status=AccountStatus.PENDING,
+        is_active=False,
+        is_email_verified=False,
+        is_phone_verified=False
+    )
+    db.add(user)
+    db.flush()
+
+    # Create MentorApplication record
+    app_record = MentorApplication(
+        user_id=user.id,
+        full_name=name_clean,
+        official_email=email_clean,
+        institute_name=mentor_in.institute_name.strip(),
+        employee_id=mentor_in.employee_id.strip(),
+        department=mentor_in.department.strip() if mentor_in.department else None,
+        designation=mentor_in.designation.strip() if mentor_in.designation else None,
+        status=MentorApplicationStatus.PENDING
+    )
+    db.add(app_record)
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Your Mentor application has been submitted successfully. It is currently under review by an Administrator.",
+        "application_id": app_record.id,
+        "status": "PENDING"
+    }
+
+@router.post("/admin/bootstrap", response_model=Token, summary="Bootstrap Initial Administrator Account")
+def admin_bootstrap(
+    data: AdminBootstrapRequest,
+    db: Session = Depends(get_db)
+):
+    key_input = data.bootstrap_key.strip()
+    configured_secret = settings.ADMIN_BOOTSTRAP_SECRET.strip()
+
+    if not secrets.compare_digest(key_input, configured_secret):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid administrator bootstrap key."
+        )
+
+    email_clean = data.email.strip().lower()
+    name_clean = data.full_name.strip()
+    if not name_clean:
+        name_clean = "Administrator"
+
+    if len(data.password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 6 characters long."
+        )
+
+    user = db.query(User).filter(User.email == email_clean).first()
+    hashed_password = get_password_hash(data.password)
+
+    if user:
+        # Upgrade existing user to ADMIN
+        user.hashed_password = hashed_password
+        user.full_name = name_clean
+        user.account_type = AccountType.ADMIN
+        user.status = AccountStatus.ACTIVE
+        user.is_active = True
+        user.is_superuser = True
+        user.is_email_verified = True
+        db.commit()
+        db.refresh(user)
+    else:
+        user = User(
+            email=email_clean,
+            hashed_password=hashed_password,
+            full_name=name_clean,
+            account_type=AccountType.ADMIN,
+            status=AccountStatus.ACTIVE,
+            is_active=True,
+            is_superuser=True,
+            is_email_verified=True,
+            is_phone_verified=True
+        )
+        db.add(user)
+        db.flush()
+
+    # Ensure admin workspace exists
+    admin_org = db.query(Organization).filter(
+        Organization.owner_id == user.id,
+        Organization.slug.like(f"admin-workspace-{user.id}%")
+    ).first()
+    if not admin_org:
+        admin_org = Organization(
+            name=f"{user.full_name}'s Admin Workspace",
+            slug=f"admin-workspace-{user.id}",
+            type=OrgType.CONSULTANCY,
+            owner_id=user.id
+        )
+        db.add(admin_org)
+        db.flush()
+
+    mem = db.query(OrganizationMembership).filter(
+        OrganizationMembership.user_id == user.id,
+        OrganizationMembership.organization_id == admin_org.id
+    ).first()
+    if not mem:
+        mem = OrganizationMembership(
+            user_id=user.id,
+            organization_id=admin_org.id,
+            role=OrgRole.ADMIN
+        )
+        db.add(mem)
+    db.commit()
+    db.refresh(user)
+
+    access_token = create_access_token(
+        subject=user.id,
+        org_id=admin_org.id,
+        role="ADMIN",
+        account_type="ADMIN",
+        status="ACTIVE"
+    )
+
+    return Token(
+        access_token=access_token,
+        token_type="bearer",
+        active_org_id=admin_org.id,
+        user=make_user_response(user, db, active_org_id=admin_org.id, active_role="ADMIN")
     )
 
 @router.post("/login", response_model=Token, summary="User Login")
@@ -352,6 +535,7 @@ async def login(
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     requested_role: Optional[str] = Query(None),
+    requested_account_type: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
     username_clean = form_data.username.strip().lower()
@@ -376,21 +560,81 @@ async def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Inactive user account."
-        )
-
-    # Read requested_role from query parameter, header, or form body
-    if not requested_role:
-        requested_role = request.headers.get("X-Requested-Role")
-    if not requested_role:
+    # 1. Resolve requested account type / context
+    req_type = requested_account_type or requested_role
+    if not req_type:
+        req_type = request.headers.get("X-Requested-Role") or request.headers.get("X-Requested-Account-Type")
+    if not req_type:
         try:
             form = await request.form()
-            requested_role = form.get("requested_role")
+            req_type = form.get("requested_account_type") or form.get("requested_role")
         except Exception:
             pass
+
+    actual_account_type_str = user.account_type.value if hasattr(user.account_type, "value") else str(user.account_type).upper()
+    user_status_str = user.status.value if hasattr(user.status, "value") else str(user.status).upper()
+
+    # 2. Critical Backend Authentication Rule: Strict Account Type Matching
+    if req_type:
+        clean_req = str(req_type).strip().upper()
+        if clean_req in ("CANDIDATE", "STUDENT"):
+            clean_req = "STUDENT"
+        elif clean_req in ("ADMINISTRATOR", "ADMIN"):
+            clean_req = "ADMIN"
+        elif clean_req == "MENTOR":
+            clean_req = "MENTOR"
+
+        ROLE_DISPLAY_NAMES = {
+            "ADMIN": "Administrator",
+            "MENTOR": "Mentor",
+            "STUDENT": "Student",
+            "RECRUITER": "Recruiter"
+        }
+
+        # Allow superuser to access Admin context
+        is_admin_allowed = user.is_superuser and clean_req == "ADMIN"
+
+        if actual_account_type_str != clean_req and not is_admin_allowed:
+            actual_display = ROLE_DISPLAY_NAMES.get(actual_account_type_str, actual_account_type_str.title())
+            clean_display = ROLE_DISPLAY_NAMES.get(clean_req, clean_req.title())
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"This account is registered as a {actual_display}. Please select {actual_display}."
+            )
+
+    # 3. Lifecycle Status Checks
+    if user_status_str == "PENDING":
+        app = db.query(MentorApplication).filter(
+            (MentorApplication.user_id == user.id) | (MentorApplication.official_email == user.email)
+        ).order_by(MentorApplication.id.desc()).first()
+        if app and app.status == MentorApplicationStatus.PENDING:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your Mentor application is currently pending administrator review. You will be notified once approved."
+            )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account is currently pending administrator approval."
+        )
+
+    if user_status_str == "REJECTED":
+        app = db.query(MentorApplication).filter(
+            (MentorApplication.user_id == user.id) | (MentorApplication.official_email == user.email)
+        ).order_by(MentorApplication.id.desc()).first()
+        reason = f" Reason: {app.rejection_reason}" if (app and app.rejection_reason) else ""
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Your Mentor application was not approved.{reason}"
+        )
+
+    if user_status_str == "SUSPENDED" or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This account has been deactivated or suspended."
+        )
+
+    # 4. Successful Authentication
+    reset_login_rate_limit(request, username_clean)
 
     memberships = (
         db.query(OrganizationMembership)
@@ -398,83 +642,44 @@ async def login(
         .all()
     )
 
+    active_org_id = memberships[0].organization_id if memberships else 0
+
     if not memberships:
+        org_slug = f"workspace-{user.id}"
         org = Organization(
             name=f"{user.full_name}'s Workspace",
-            slug=f"workspace-{user.id}",
-            type=OrgType.INDIVIDUAL,
+            slug=org_slug,
+            type=OrgType.INDIVIDUAL if actual_account_type_str == "STUDENT" else OrgType.CONSULTANCY,
             owner_id=user.id
         )
         db.add(org)
         db.flush()
-        default_role = OrgRole.STUDENT if requested_role and requested_role.strip().upper() == "STUDENT" else OrgRole.ADMIN
         m = OrganizationMembership(
             user_id=user.id,
             organization_id=org.id,
-            role=default_role
+            role=OrgRole.STUDENT if actual_account_type_str == "STUDENT" else (OrgRole.MENTOR if actual_account_type_str == "MENTOR" else OrgRole.ADMIN)
         )
         db.add(m)
         db.commit()
-        memberships = [m]
-
-    target_membership = None
-
-    if requested_role:
-        req_clean = requested_role.strip().upper()
-        if req_clean == "CANDIDATE":
-            req_clean = "STUDENT"
-
-        ROLE_DISPLAY_NAMES = {
-            "ADMIN": "Administrator",
-            "MENTOR": "Mentor",
-            "RECRUITER": "Recruiter",
-            "STUDENT": "Student",
-            "COUNSELOR": "Counselor"
-        }
-        role_title = ROLE_DISPLAY_NAMES.get(req_clean, req_clean.title())
-
-        # Match against user's actual memberships
-        for m in memberships:
-            m_role_str = m.role.value if hasattr(m.role, "value") else str(m.role).upper()
-            if m_role_str == "CANDIDATE":
-                m_role_str = "STUDENT"
-            if m_role_str == req_clean:
-                target_membership = m
-                break
-
-        # Superuser privilege allows ADMIN role access
-        if not target_membership and req_clean == "ADMIN" and user.is_superuser and memberships:
-            target_membership = memberships[0]
-
-        if not target_membership:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"This account does not have {role_title} access."
-            )
-    else:
-        target_membership = memberships[0]
-
-    reset_login_rate_limit(request, username_clean)
-
-    role_val = target_membership.role.value if hasattr(target_membership.role, "value") else str(target_membership.role)
-    if role_val.upper() == "CANDIDATE":
-        role_val = "STUDENT"
+        active_org_id = org.id
 
     access_token = create_access_token(
         subject=user.id,
-        org_id=target_membership.organization_id,
-        role=role_val
+        org_id=active_org_id,
+        role=actual_account_type_str,
+        account_type=actual_account_type_str,
+        status=user_status_str
     )
 
     return Token(
         access_token=access_token,
         token_type="bearer",
-        active_org_id=target_membership.organization_id,
+        active_org_id=active_org_id,
         user=make_user_response(
             user,
             db,
-            active_org_id=target_membership.organization_id,
-            active_role=role_val
+            active_org_id=active_org_id,
+            active_role=actual_account_type_str
         )
     )
 
@@ -489,7 +694,6 @@ def get_me(request: Request, user: User = Depends(get_current_user), db: Session
     active_org_id = None
     token_role = None
 
-    # Try getting active org and role from token header if present
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
         from app.core.security import decode_access_token
@@ -501,7 +705,7 @@ def get_me(request: Request, user: User = Depends(get_current_user), db: Session
                     active_org_id = int(raw_org)
                 except (ValueError, TypeError):
                     active_org_id = None
-            token_role = payload.get("role")
+            token_role = payload.get("role") or payload.get("account_type")
 
     for m in memberships:
         if not m.organization:
@@ -513,15 +717,6 @@ def get_me(request: Request, user: User = Depends(get_current_user), db: Session
         org_dict = org_resp.model_dump()
         org_dict["role"] = role_str
         org_list.append(org_dict)
-
-    if not active_org_id and token_role:
-        for m in memberships:
-            m_r = m.role.value if hasattr(m.role, "value") else str(m.role).upper()
-            if m_r == "CANDIDATE":
-                m_r = "STUDENT"
-            if m_r == token_role.upper():
-                active_org_id = m.organization_id
-                break
 
     if not active_org_id and memberships:
         active_org_id = memberships[0].organization_id

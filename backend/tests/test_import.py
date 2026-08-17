@@ -2,17 +2,19 @@ import io
 import openpyxl
 from fastapi.testclient import TestClient
 from app.main import app
+from app.core.config import settings
 
 client = TestClient(app)
 
 def get_auth_header(email="importuser@example.com"):
-    reg = client.post("/api/v1/auth/register", json={
-        "full_name": "Import User",
+    boot = client.post("/api/v1/auth/admin/bootstrap", json={
+        "bootstrap_key": settings.ADMIN_BOOTSTRAP_SECRET,
+        "full_name": "Import Admin User",
         "email": email,
         "password": "Password123!"
     })
-    if reg.status_code == 200:
-        token = reg.json()["access_token"]
+    if boot.status_code in (200, 201):
+        token = boot.json()["access_token"]
     else:
         login = client.post("/api/v1/auth/login", data={"username": email, "password": "Password123!"})
         token = login.json()["access_token"]

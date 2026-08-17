@@ -1,16 +1,18 @@
 from fastapi.testclient import TestClient
 from app.main import app
+from app.core.config import settings
 
 client = TestClient(app)
 
 def test_development_seed_generator():
-    # Register user
-    reg = client.post("/api/v1/auth/register", json={
-        "full_name": "Seed Test User",
+    # Bootstrap Admin user
+    boot = client.post("/api/v1/auth/admin/bootstrap", json={
+        "bootstrap_key": settings.ADMIN_BOOTSTRAP_SECRET,
+        "full_name": "Seed Admin User",
         "email": "seed.test@example.com",
         "password": "Password123!"
     })
-    token = reg.json()["access_token"]
+    token = boot.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
     # Generate Seed Data

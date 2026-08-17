@@ -1,7 +1,8 @@
 from typing import List, Set, Union, Sequence
 from fastapi import Depends, HTTPException, status
 from app.models.organization import OrgRole
-from app.core.tenant import TenantContext, get_current_tenant
+from app.models.user import User, AccountType
+from app.core.tenant import TenantContext, get_current_tenant, get_current_user
 
 # ==============================================================================
 # CANONICAL PERMISSIONS DEFINITION
@@ -14,29 +15,29 @@ class Permission:
     USERS_VIEW = "users.view"
     USERS_MANAGE = "users.manage"
     ROLES_MANAGE = "roles.manage"
-    
+
     # Students & Mentorship
     STUDENTS_VIEW_ALL = "students.view_all"
     STUDENTS_VIEW_ASSIGNED = "students.view_assigned"
     STUDENTS_MANAGE = "students.manage"
     MENTORSHIP_VIEW = "mentorship.view"
     MENTORSHIP_MANAGE = "mentorship.manage"
-    
+
     # Recruitment & Candidates
     CANDIDATES_VIEW = "candidates.view"
     CANDIDATES_MANAGE = "candidates.manage"
     CANDIDATES_ASSIGN = "candidates.assign"
-    
+
     # Jobs & Opportunities
     JOBS_VIEW = "jobs.view"
     JOBS_MANAGE = "jobs.manage"
-    
+
     # Applications
     APPLICATIONS_VIEW_ALL = "applications.view_all"
     APPLICATIONS_MANAGE = "applications.manage"
     APPLICATIONS_OWN_VIEW = "applications.own.view"
     APPLICATIONS_OWN_CREATE = "applications.own.create"
-    
+
     # Submissions & Clients
     SUBMISSIONS_VIEW = "submissions.view"
     SUBMISSIONS_MANAGE = "submissions.manage"
@@ -44,16 +45,16 @@ class Permission:
     COMPANIES_MANAGE = "companies.manage"
     CONTACTS_VIEW = "contacts.view"
     CONTACTS_MANAGE = "contacts.manage"
-    
+
     # Activity & CRM
     ACTIVITY_VIEW = "activity.view"
     ACTIVITY_MANAGE = "activity.manage"
-    
+
     # Talent Profile & Resume
     PROFILE_OWN = "profile.own"
     RESUME_OWN = "resume.own"
     RECOMMENDATIONS_VIEW = "recommendations.view"
-    
+
     # Analytics & Reports
     ANALYTICS_WORKSPACE = "analytics.workspace"
 
@@ -173,29 +174,64 @@ ROLE_PERMISSIONS_MAP = {
     OrgRole.CANDIDATE: STUDENT_PERMISSIONS,  # Backward compatibility alias
 }
 
-def normalize_role(role_val: Union[OrgRole, str]) -> OrgRole:
-    if isinstance(role_val, OrgRole):
-        return role_val
-    try:
-        return OrgRole(role_val.upper())
-    except (ValueError, AttributeError):
-        return OrgRole.STUDENT
+ACCOUNT_TYPE_PERMISSIONS_MAP = {
+    AccountType.ADMIN: ADMIN_PERMISSIONS,
+    AccountType.MENTOR: MENTOR_PERMISSIONS,
+    AccountType.STUDENT: STUDENT_PERMISSIONS,
+    AccountType.RECRUITER: RECRUITER_PERMISSIONS,
+}
 
-def get_role_permissions(role_val: Union[OrgRole, str]) -> List[str]:
-    norm_role = normalize_role(role_val)
-    perms = ROLE_PERMISSIONS_MAP.get(norm_role, STUDENT_PERMISSIONS)
-    return sorted(list(perms))
+def normalize_role(role_val: Union[OrgRole, AccountType, str]) -> str:
+    if hasattr(role_val, "value"):
+        return str(role_val.value).upper()
+    return str(role_val).upper()
 
-def has_permission(role_val: Union[OrgRole, str], permission: str, is_superuser: bool = False) -> bool:
+def get_role_permissions(role_val: Union[OrgRole, AccountType, str], is_superuser: bool = False) -> List[str]:
+    if is_superuser:
+        return sorted(list(ADMIN_PERMISSIONS))
+
+    r_str = normalize_role(role_val)
+    if r_str in ("ADMIN", "ADMINISTRATOR"):
+        return sorted(list(ADMIN_PERMISSIONS))
+    if r_str in ("MENTOR", "COUNSELOR"):
+        return sorted(list(MENTOR_PERMISSIONS))
+    if r_str == "RECRUITER":
+        return sorted(list(RECRUITER_PERMISSIONS))
+    return sorted(list(STUDENT_PERMISSIONS))
+
+def has_permission(role_val: Union[OrgRole, AccountType, str], permission: str, is_superuser: bool = False) -> bool:
     if is_superuser:
         return True
-    norm_role = normalize_role(role_val)
-    perms = ROLE_PERMISSIONS_MAP.get(norm_role, set())
+    perms = set(get_role_permissions(role_val, is_superuser))
     return permission in perms
 
 # ==============================================================================
 # FASTAPI DEPENDENCY FACTORIES
 # ==============================================================================
+
+def require_account_type(*allowed_types: Union[AccountType, str]):
+    """
+    Dependency ensuring the authenticated user has one of the specified account types
+    or is a global superuser.
+    """
+    normalized_allowed = {
+        a.value if isinstance(a, AccountType) else str(a).upper()
+        for a in allowed_types
+    }
+
+    def account_type_checker(user: User = Depends(get_current_user)) -> User:
+        if user.is_superuser and "ADMIN" in normalized_allowed:
+            return user
+
+        current_type_str = user.account_type.value if hasattr(user.account_type, "value") else str(user.account_type).upper()
+        if current_type_str not in normalized_allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied: This operation requires one of the following account types: {', '.join(sorted(normalized_allowed))}."
+            )
+        return user
+
+    return account_type_checker
 
 def require_role(*allowed_roles: Union[OrgRole, str]):
     """
@@ -213,7 +249,7 @@ def require_role(*allowed_roles: Union[OrgRole, str]):
     def role_checker(ctx: TenantContext = Depends(get_current_tenant)) -> TenantContext:
         if ctx.user.is_superuser:
             return ctx
-        
+
         current_role_str = ctx.role.value if hasattr(ctx.role, "value") else str(ctx.role).upper()
         if current_role_str not in normalized_allowed:
             raise HTTPException(
@@ -231,9 +267,8 @@ def require_permission(permission: str):
     def permission_checker(ctx: TenantContext = Depends(get_current_tenant)) -> TenantContext:
         if ctx.user.is_superuser:
             return ctx
-        
-        current_role = normalize_role(ctx.role)
-        perms = ROLE_PERMISSIONS_MAP.get(current_role, set())
+
+        perms = set(get_role_permissions(ctx.role))
         if permission not in perms:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -251,8 +286,7 @@ def require_any_permission(*permissions: str):
         if ctx.user.is_superuser:
             return ctx
 
-        current_role = normalize_role(ctx.role)
-        perms = ROLE_PERMISSIONS_MAP.get(current_role, set())
+        perms = set(get_role_permissions(ctx.role))
         if not any(p in perms for p in permissions):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

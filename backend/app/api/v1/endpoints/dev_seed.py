@@ -3,12 +3,12 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.tenant import get_current_tenant, TenantContext
 from app.core.permissions import require_permission, Permission
 from app.models.company import Company, Contact, ContactStatus
 from app.models.requirement import JobRequirement, EmploymentType, RequirementStatus
 from app.models.activity import Call, Followup, CallType, CallOutcome, FollowupStatus, FollowupPriority, EntityType
 from app.models.application import Application, ApplicationStage, Interview, InterviewOutcome
+from app.models.candidate import Candidate, CandidateStatus
 
 router = APIRouter()
 
@@ -126,12 +126,24 @@ def generate_seed_data(
         created_requirements.append(req)
 
     # 4. Create Applications & Interviews
+    candidate = db.query(Candidate).filter(Candidate.organization_id == ctx.organization.id).first()
+    if not candidate:
+        candidate = Candidate(
+            organization_id=ctx.organization.id,
+            user_id=ctx.user.id,
+            full_name=ctx.user.full_name,
+            email=ctx.user.email,
+            status=CandidateStatus.READY
+        )
+        db.add(candidate)
+        db.flush()
+
     for req in created_requirements[:8]:
         app_stage = ApplicationStage.INTERVIEWING if req.status == RequirementStatus.INTERVIEWING else ApplicationStage.APPLIED
         app_obj = Application(
             organization_id=ctx.organization.id,
             job_requirement_id=req.id,
-            candidate_id=1,  # User's implicit candidate
+            candidate_id=candidate.id,
             stage=app_stage,
             notes="Submitted resume & initial screening."
         )

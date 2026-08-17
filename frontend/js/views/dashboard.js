@@ -145,104 +145,100 @@ function renderAdminDashboard(firstName) {
   return `
     <div class="dashboard-container">
       <div class="dashboard-header" style="margin-bottom: 1.5rem;">
-        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
-          <h1 class="view-title" style="margin: 0;">Workspace Command Center</h1>
-          <span class="role-badge badge-admin">Administrator</span>
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+              <h1 class="view-title" style="margin: 0;">Administrator Command Center</h1>
+              <span class="role-badge badge-admin">Administrator</span>
+            </div>
+            <p class="view-subtitle">Platform governance: Approve mentor applications, oversee student career progress, audit accounts, and manage organization settings.</p>
+          </div>
+          <div style="display: flex; gap: 0.75rem;">
+            <a href="#/admin" class="btn btn-primary" style="font-size: 0.85rem; gap: 0.4rem;">
+              ${getIcon("shield-check", "", 15)} Open Governance Portal
+            </a>
+          </div>
         </div>
-        <p class="view-subtitle">Full workspace oversight: Manage team roles, monitor active candidate pipelines, track client submissions, and audit operations.</p>
       </div>
 
       <!-- Admin KPI Grid -->
       <div class="kpi-grid" style="margin-bottom: 1.5rem;">
         <div class="card kpi-card">
           <div class="kpi-title" style="display: flex; align-items: center; gap: 0.35rem;">
-            ${getIcon("candidates", "", 15)} Workspace Talent Pool
+            ${getIcon("shield-check", "", 15)} Pending Mentor Applications
           </div>
-          <div id="kpi-admin-candidates" class="kpi-value" style="color: var(--primary-color);">-</div>
-          <div class="kpi-caption">Active candidate roster</div>
+          <div id="kpi-admin-pending" class="kpi-value" style="color: var(--warning-color);">-</div>
+          <div class="kpi-caption">Awaiting verification</div>
         </div>
 
         <div class="card kpi-card">
           <div class="kpi-title" style="display: flex; align-items: center; gap: 0.35rem;">
-            ${getIcon("opportunities", "", 15)} Open Requirements
+            ${getIcon("graduation-cap", "", 15)} Total Students
           </div>
-          <div id="kpi-opportunities" class="kpi-value" style="color: #3B82F6;">-</div>
-          <div class="kpi-caption">Client hiring mandates</div>
+          <div id="kpi-admin-students" class="kpi-value" style="color: #10b981;">-</div>
+          <div class="kpi-caption">Active student accounts</div>
         </div>
 
         <div class="card kpi-card">
           <div class="kpi-title" style="display: flex; align-items: center; gap: 0.35rem;">
-            ${getIcon("submissions", "", 15)} Client Submissions
+            ${getIcon("mentor", "", 15)} Approved Mentors
           </div>
-          <div id="kpi-applications" class="kpi-value" style="color: var(--accent-color);">-</div>
-          <div class="kpi-caption">Pipeline submissions & interviews</div>
+          <div id="kpi-admin-mentors" class="kpi-value" style="color: #a855f7;">-</div>
+          <div class="kpi-caption">Faculty & guides</div>
         </div>
 
         <div class="card kpi-card">
           <div class="kpi-title" style="display: flex; align-items: center; gap: 0.35rem;">
-            ${getIcon("followups", "", 15)} Scheduled Follow-ups
+            ${getIcon("users", "", 15)} Platform Users
           </div>
-          <div id="kpi-today" class="kpi-value" style="color: var(--warning-color);">-</div>
-          <div class="kpi-caption">Workspace tasks due today</div>
+          <div id="kpi-admin-total" class="kpi-value" style="color: #3b82f6;">-</div>
+          <div class="kpi-caption">Total registered users</div>
         </div>
       </div>
 
-      <!-- Pipeline Stages & Admin Controls -->
+      <!-- Governance Quick Links & Admin Controls -->
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem; align-items: start;">
         <div class="card">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
             <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 0.4rem;">
-              ${getIcon("chart", "", 16)} Candidate Pipeline Stages
+              ${getIcon("shield-check", "", 16)} Approvals & Applications
             </h3>
-            <a href="#/candidates" class="btn btn-outline" style="font-size: 0.75rem;">View Candidates</a>
+            <a href="#/admin" class="btn btn-outline" style="font-size: 0.75rem;">Manage All</a>
           </div>
-          <div id="admin-pipeline-stages" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem;">
-            <div style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-md); text-align: center;">
-              <div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600;">NEW / SOURCED</div>
-              <div id="pipe-stage-new" style="font-size: 1.25rem; font-weight: 800; color: var(--text-primary); margin-top: 0.2rem;">-</div>
-            </div>
-            <div style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-md); text-align: center;">
-              <div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600;">SCREENING</div>
-              <div id="pipe-stage-screen" style="font-size: 1.25rem; font-weight: 800; color: var(--primary-color); margin-top: 0.2rem;">-</div>
-            </div>
-            <div style="background: var(--bg-secondary); padding: 0.75rem; border-radius: var(--radius-md); text-align: center;">
-              <div style="font-size: 0.7rem; color: var(--text-muted); font-weight: 600;">INTERVIEWING</div>
-              <div id="pipe-stage-interview" style="font-size: 1.25rem; font-weight: 800; color: var(--accent-color); margin-top: 0.2rem;">-</div>
-            </div>
+          <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+            Institutional faculty members apply for Mentor accounts. Administrators must verify credentials before access is granted.
+          </p>
+          <div style="display: flex; flex-direction: column; gap: 0.65rem;">
+            <a href="#/admin-applications" class="btn btn-primary" style="justify-content: start; gap: 0.5rem;">
+              ${getIcon("shield-check", "", 16)} Review Mentor Applications
+            </a>
+            <a href="#/admin-students" class="btn btn-outline" style="justify-content: start; gap: 0.5rem;">
+              ${getIcon("graduation-cap", "", 16)} View Student Talent Directory
+            </a>
+            <a href="#/admin-mentors" class="btn btn-outline" style="justify-content: start; gap: 0.5rem;">
+              ${getIcon("mentor", "", 16)} View Faculty Mentors
+            </a>
           </div>
         </div>
 
         <div class="card">
           <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.4rem;">
-            ${getIcon("shield-check", "", 16)} WORKSPACE CONTROLS
+            ${getIcon("team", "", 16)} PLATFORM & WORKSPACE CONTROLS
           </h3>
           <div style="display: flex; flex-direction: column; gap: 0.65rem;">
-            <a href="#/team" class="btn btn-primary" style="justify-content: start; gap: 0.5rem;">
-              ${getIcon("team", "", 16)} Manage Team & Assign Roles
+            <a href="#/admin-users" class="btn btn-outline" style="justify-content: start; gap: 0.5rem;">
+              ${getIcon("users", "", 16)} Audit Users & Account Types
+            </a>
+            <a href="#/team" class="btn btn-outline" style="justify-content: start; gap: 0.5rem;">
+              ${getIcon("team", "", 16)} Manage Organizations & Roles
             </a>
             <a href="#/opportunities" class="btn btn-outline" style="justify-content: start; gap: 0.5rem;">
               ${getIcon("opportunities", "", 16)} Manage Job Requirements
             </a>
             <a href="#/import" class="btn btn-outline" style="justify-content: start; gap: 0.5rem;">
-              ${getIcon("import", "", 16)} Bulk Import Candidates & Contacts
-            </a>
-            <a href="#/contacts" class="btn btn-outline" style="justify-content: start; gap: 0.5rem;">
-              ${getIcon("contacts", "", 16)} HR Contacts Directory
+              ${getIcon("import", "", 16)} Bulk Import Data (CSV/Excel)
             </a>
           </div>
-        </div>
-      </div>
-
-      <!-- Action Engine Follow-ups -->
-      <div class="card">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
-          <h3 style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 0.4rem;">
-            ${getIcon("followups", "", 16)} SCHEDULED FOLLOW-UPS & NEXT MOVES
-          </h3>
-          <a href="#/followups" class="btn btn-outline" style="font-size: 0.75rem;">View All</a>
-        </div>
-        <div id="dashboard-followups-list">
-          <p style="color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 1.5rem 0;">Loading action items...</p>
         </div>
       </div>
     </div>
@@ -409,6 +405,24 @@ export async function initDashboardListeners() {
   // Quick Log HR Interaction Button
   document.getElementById("btn-quick-log-hr")?.addEventListener("click", openLogHRInteractionModal);
 
+  const role = getUserRole();
+  if (role === "ADMIN") {
+    try {
+      const adminStats = await API.get("/admin/stats");
+      const kpiPending = document.getElementById("kpi-admin-pending");
+      const kpiStudents = document.getElementById("kpi-admin-students");
+      const kpiMentors = document.getElementById("kpi-admin-mentors");
+      const kpiTotal = document.getElementById("kpi-admin-total");
+
+      if (kpiPending) kpiPending.textContent = adminStats.pending_mentor_applications ?? 0;
+      if (kpiStudents) kpiStudents.textContent = adminStats.total_students ?? 0;
+      if (kpiMentors) kpiMentors.textContent = adminStats.total_mentors ?? 0;
+      if (kpiTotal) kpiTotal.textContent = adminStats.total_users ?? 0;
+    } catch (err) {
+      console.warn("Failed to load admin stats:", err);
+    }
+  }
+
   try {
     const stats = await API.get("/activity/dashboard/stats");
 
@@ -425,14 +439,6 @@ export async function initDashboardListeners() {
     if (kpiApps) kpiApps.textContent = `${stats.applications_count ?? 0} (${stats.interviews_count ?? 0} Interviews)`;
     if (kpiCand) kpiCand.textContent = stats.total_candidates ?? stats.applications_count ?? 0;
     if (kpiMentor) kpiMentor.textContent = stats.total_candidates ?? 0;
-
-    // Admin stages preview
-    const pipeNew = document.getElementById("pipe-stage-new");
-    const pipeScreen = document.getElementById("pipe-stage-screen");
-    const pipeInt = document.getElementById("pipe-stage-interview");
-    if (pipeNew) pipeNew.textContent = stats.new_candidates ?? 0;
-    if (pipeScreen) pipeScreen.textContent = stats.screening_candidates ?? 0;
-    if (pipeInt) pipeInt.textContent = stats.interviews_count ?? 0;
 
     const listContainer = document.getElementById("dashboard-followups-list");
     if (!stats.today_followups || stats.today_followups.length === 0) {
