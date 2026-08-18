@@ -132,8 +132,7 @@ def ensure_demo_user_exists(db: Session):
                     db.refresh(d_cand)
 
                 d_prof = db.query(StudentProfile).filter(
-                    StudentProfile.organization_id == d_org.id,
-                    StudentProfile.user_id == user.id
+                    StudentProfile.candidate_id == d_cand.id
                 ).first()
                 if not d_prof:
                     d_prof = StudentProfile(
@@ -196,8 +195,9 @@ def make_user_response(
             role=first_r
         )
 
-    # Authoritative permissions derived directly from account_type and superuser status
-    resolved_permissions = get_role_permissions(user.account_type, is_superuser=user.is_superuser)
+    # Authoritative permissions derived from active role context or account_type
+    effective_role = active_role or (active_org_info.role if active_org_info else user.account_type)
+    resolved_permissions = get_role_permissions(effective_role, is_superuser=user.is_superuser)
 
     return UserResponse(
         id=user.id,
@@ -533,76 +533,93 @@ def admin_bootstrap(
 @router.post("/login", response_model=Token, summary="User Login")
 async def login(
     request: Request,
-    form_data: OAuth2PasswordRequestForm = Depends(),
+    selected_role: Optional[str] = Query(None),
     requested_role: Optional[str] = Query(None),
     requested_account_type: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
-    username_clean = form_data.username.strip().lower()
+    username = None
+    password = None
+    role_input = selected_role or requested_role or requested_account_type
+
+    # 1. Parse JSON or Form Data payload
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            if isinstance(body, dict):
+                username = body.get("email") or body.get("username")
+                password = body.get("password")
+                role_input = role_input or body.get("selected_role") or body.get("requested_role") or body.get("requested_account_type")
+        except Exception:
+            pass
+    else:
+        try:
+            form = await request.form()
+            username = form.get("username") or form.get("email")
+            password = form.get("password")
+            role_input = role_input or form.get("selected_role") or form.get("requested_role") or form.get("requested_account_type")
+        except Exception:
+            pass
+
+    if not role_input:
+        role_input = (
+            request.headers.get("X-Selected-Role") or
+            request.headers.get("X-Requested-Role") or
+            request.headers.get("X-Requested-Account-Type")
+        )
+
+    # 2. Validate Credentials Presence
+    if not username or not password or not str(username).strip() or not str(password).strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please enter your credentials."
+        )
+
+    username_clean = str(username).strip().lower()
+
+    # 3. Validate Role Selection Presence
+    if not role_input or not str(role_input).strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please select your role."
+        )
+
+    clean_req = str(role_input).strip().upper()
+    if clean_req in ("STUDENT", "CANDIDATE"):
+        clean_req = "STUDENT"
+    elif clean_req in ("MENTOR", "COUNSELOR"):
+        clean_req = "MENTOR"
+    elif clean_req in ("ADMIN", "ADMINISTRATOR"):
+        clean_req = "ADMIN"
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid role selected. Must be Student, Mentor, or Admin."
+        )
 
     check_login_rate_limit(request, username_clean)
 
     if settings.NXTMOV_DEMO_MODE and username_clean == settings.DEMO_USER_EMAIL.lower():
         ensure_demo_user_exists(db)
 
+    # 4. Credential Verification
     user = db.query(User).filter(User.email == username_clean).first()
-    if not user:
+    if not user or not verify_password(str(password), user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password.",
+            detail="Invalid username or password.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if not verify_password(form_data.password, user.hashed_password):
+    # 5. Account Lifecycle & Disabled Checks
+    if not user.is_active or user.status == AccountStatus.SUSPENDED:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password.",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account is currently disabled."
         )
 
-    # 1. Resolve requested account type / context
-    req_type = requested_account_type or requested_role
-    if not req_type:
-        req_type = request.headers.get("X-Requested-Role") or request.headers.get("X-Requested-Account-Type")
-    if not req_type:
-        try:
-            form = await request.form()
-            req_type = form.get("requested_account_type") or form.get("requested_role")
-        except Exception:
-            pass
-
-    actual_account_type_str = user.account_type.value if hasattr(user.account_type, "value") else str(user.account_type).upper()
     user_status_str = user.status.value if hasattr(user.status, "value") else str(user.status).upper()
-
-    # 2. Critical Backend Authentication Rule: Strict Account Type Matching
-    if req_type:
-        clean_req = str(req_type).strip().upper()
-        if clean_req in ("CANDIDATE", "STUDENT"):
-            clean_req = "STUDENT"
-        elif clean_req in ("ADMINISTRATOR", "ADMIN"):
-            clean_req = "ADMIN"
-        elif clean_req == "MENTOR":
-            clean_req = "MENTOR"
-
-        ROLE_DISPLAY_NAMES = {
-            "ADMIN": "Administrator",
-            "MENTOR": "Mentor",
-            "STUDENT": "Student",
-            "RECRUITER": "Recruiter"
-        }
-
-        # Allow superuser to access Admin context
-        is_admin_allowed = user.is_superuser and clean_req == "ADMIN"
-
-        if actual_account_type_str != clean_req and not is_admin_allowed:
-            actual_display = ROLE_DISPLAY_NAMES.get(actual_account_type_str, actual_account_type_str.title())
-            clean_display = ROLE_DISPLAY_NAMES.get(clean_req, clean_req.title())
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"This account is registered as a {actual_display}. Please select {actual_display}."
-            )
-
-    # 3. Lifecycle Status Checks
     if user_status_str == "PENDING":
         app = db.query(MentorApplication).filter(
             (MentorApplication.user_id == user.id) | (MentorApplication.official_email == user.email)
@@ -627,13 +644,18 @@ async def login(
             detail=f"Your Mentor application was not approved.{reason}"
         )
 
-    if user_status_str == "SUSPENDED" or not user.is_active:
+    # 6. Strict Role Comparison (Backend Source of Truth)
+    actual_account_type_str = user.account_type.value if hasattr(user.account_type, "value") else str(user.account_type).upper()
+    if actual_account_type_str == "CANDIDATE":
+        actual_account_type_str = "STUDENT"
+
+    if actual_account_type_str != clean_req:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This account has been deactivated or suspended."
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account does not belong to the selected role."
         )
 
-    # 4. Successful Authentication
+    # 7. Create Authenticated Session & JWT Token
     reset_login_rate_limit(request, username_clean)
 
     memberships = (
@@ -645,15 +667,16 @@ async def login(
     active_org_id = memberships[0].organization_id if memberships else 0
 
     if not memberships:
-        org_slug = f"workspace-{user.id}"
-        org = Organization(
-            name=f"{user.full_name}'s Workspace",
-            slug=org_slug,
-            type=OrgType.INDIVIDUAL if actual_account_type_str == "STUDENT" else OrgType.CONSULTANCY,
-            owner_id=user.id
-        )
-        db.add(org)
-        db.flush()
+        org = db.query(Organization).filter(Organization.owner_id == user.id).first()
+        if not org:
+            org = Organization(
+                name=f"{user.full_name}'s Workspace",
+                slug=f"workspace-{user.id}-{secrets.token_hex(3)}",
+                type=OrgType.INDIVIDUAL if actual_account_type_str == "STUDENT" else OrgType.CONSULTANCY,
+                owner_id=user.id
+            )
+            db.add(org)
+            db.flush()
         m = OrganizationMembership(
             user_id=user.id,
             organization_id=org.id,

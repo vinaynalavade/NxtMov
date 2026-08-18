@@ -16,7 +16,7 @@ def get_auth_header(email="importuser@example.com"):
     if boot.status_code in (200, 201):
         token = boot.json()["access_token"]
     else:
-        login = client.post("/api/v1/auth/login", data={"username": email, "password": "Password123!"})
+        login = client.post("/api/v1/auth/login", data={"username": email, "password": "Password123!", "selected_role": "admin"})
         token = login.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 

@@ -13,17 +13,22 @@ import { ROLE_CONFIG, ROLES } from "../permissions.js";
 /**
  * 3 Core Account Types for NxtMov
  */
+/**
+ * 3 Core Account Types for NxtMov Login Screen
+ */
 const SELECTABLE_ACCOUNT_ROLES = [
   {
     roleKey: "STUDENT",
     urlParam: "student",
     title: "Student",
-    badgeLabel: "Candidate / Talent",
+    badgeLabel: "Talent / Candidate",
     badgeClass: "badge-student",
     icon: "graduation-cap",
     accentColor: "#10b981",
     accentBg: "rgba(16, 185, 129, 0.12)",
-    description: "Manage your profile, resume analysis, matched jobs, and track applications."
+    placeholder: "student@example.com",
+    label: "Student Email / Username",
+    description: "Manage your profile, ATS resume scores, matched opportunities, and application progress."
   },
   {
     roleKey: "MENTOR",
@@ -31,21 +36,25 @@ const SELECTABLE_ACCOUNT_ROLES = [
     title: "Mentor",
     badgeLabel: "Career Guide",
     badgeClass: "badge-mentor",
-    icon: "mentor",
+    icon: "user-check",
     accentColor: "#a855f7",
     accentBg: "rgba(168, 85, 247, 0.12)",
-    description: "Guide students, monitor progress, review ATS readiness, and conduct sessions."
+    placeholder: "faculty@institute.edu",
+    label: "Official Mentor Email",
+    description: "Guide students, review progress, inspect ATS readiness, and conduct mentoring sessions."
   },
   {
     roleKey: "ADMIN",
     urlParam: "admin",
     title: "Administrator",
-    badgeLabel: "Workspace Admin",
+    badgeLabel: "Platform Admin",
     badgeClass: "badge-admin",
     icon: "shield-check",
     accentColor: "#ef4444",
     accentBg: "rgba(239, 68, 68, 0.12)",
-    description: "Manage users, mentor approvals, organizations, and platform operations."
+    placeholder: "admin@nxtmov.local",
+    label: "Administrator Email",
+    description: "Oversee platform users, mentor approvals, organizations, and governance settings."
   }
 ];
 
@@ -70,187 +79,155 @@ function getSelectedRoleFromHash() {
 }
 
 /**
- * Master render function for /login
+ * Master render function for /login — Unified Single-Screen Login with 3-Role Selector
  */
 export function renderLogin() {
-  const selectedRoleKey = getSelectedRoleFromHash();
+  const selectedRoleKey = getSelectedRoleFromHash() || "STUDENT";
+  const activeRole = SELECTABLE_ACCOUNT_ROLES.find(r => r.roleKey === selectedRoleKey) || SELECTABLE_ACCOUNT_ROLES[0];
 
-  if (!selectedRoleKey) {
-    return renderAccountTypeSelectionScreen();
-  }
-
-  const roleMeta = SELECTABLE_ACCOUNT_ROLES.find(r => r.roleKey === selectedRoleKey) || SELECTABLE_ACCOUNT_ROLES[0];
-  return renderRoleSpecificLoginScreen(roleMeta);
-}
-
-/**
- * 1. ACCOUNT-TYPE SELECTION SCREEN ("How are you using NxtMov?")
- */
-function renderAccountTypeSelectionScreen() {
   return `
-    <div class="auth-card card" style="max-width: 680px; margin: 2.5rem auto; padding: 2.25rem 2rem;">
-      <div style="text-align: center; margin-bottom: 2rem;">
-        <div style="display: inline-flex; align-items: center; justify-content: center; width: 50px; height: 50px; border-radius: 14px; background: rgba(79, 70, 229, 0.1); color: var(--primary-color); margin-bottom: 1rem;">
-          ${getIcon("users", "", 26)}
+    <div class="auth-card card" style="max-width: 480px; margin: 2.25rem auto; padding: 2.25rem 2rem; border-radius: var(--radius-xl); box-shadow: var(--shadow-lg);">
+      <!-- Header -->
+      <div style="text-align: center; margin-bottom: 1.5rem;">
+        <div style="display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 14px; background: linear-gradient(135deg, rgba(79, 70, 229, 0.15) 0%, rgba(99, 102, 241, 0.05) 100%); color: var(--primary-color); margin-bottom: 0.85rem; box-shadow: 0 2px 8px rgba(79, 70, 229, 0.12);">
+          ${getIcon("users", "", 24)}
         </div>
-        <h2 style="margin-bottom: 0.5rem; color: var(--text-primary); font-size: 1.6rem; font-weight: 800; letter-spacing: -0.02em;">
-          How are you using NxtMov?
+        <h2 style="margin: 0 0 0.35rem 0; color: var(--text-primary); font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em;">
+          Sign In to NxtMov
         </h2>
-        <p style="color: var(--text-secondary); font-size: 0.9rem; max-width: 480px; margin: 0 auto; line-height: 1.5;">
-          Select your account type to access your tailored workspace, intelligence tools, and dashboard.
+        <p style="color: var(--text-muted); margin: 0; font-size: 0.85rem; line-height: 1.4;">
+          Select your role and enter your credentials to access your tailored workspace.
         </p>
       </div>
 
-      <!-- 3 Selectable Account Type Cards -->
-      <div class="role-select-grid" role="group" aria-label="Select your account type" style="grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));">
-        ${SELECTABLE_ACCOUNT_ROLES.map(role => `
-          <button
-            type="button"
-            class="role-select-card"
-            data-role-param="${role.urlParam}"
-            aria-label="Log in as ${role.title}: ${role.description}"
-            tabindex="0"
-          >
-            <div class="role-select-card-header">
-              <div class="role-select-icon-wrapper" style="background: ${role.accentBg}; color: ${role.accentColor};">
-                ${getIcon(role.icon, "", 20)}
-              </div>
-              <span class="role-badge ${role.badgeClass}" style="font-size: 0.65rem;">
-                ${role.badgeLabel}
-              </span>
-            </div>
-            <div class="role-select-title">
-              <span>${role.title}</span>
-              <span style="color: var(--text-muted); font-size: 0.85rem; margin-left: auto;">${getIcon("arrow-right", "", 14)}</span>
-            </div>
-            <p class="role-select-desc">
-              ${role.description}
-            </p>
-          </button>
-        `).join("")}
-      </div>
-
-      <div style="text-align: center; margin-top: 1.75rem; padding-top: 1.25rem; border-top: 1px solid var(--border-color); font-size: 0.875rem; color: var(--text-secondary);">
-        Need to register? <a href="#/register" style="color: var(--primary-color); font-weight: 600;">Student Sign Up</a> • <a href="#/apply-mentor" style="color: #a855f7; font-weight: 600;">Apply as Mentor</a>
-      </div>
-    </div>
-  `;
-}
-
-/**
- * 2. ROLE-SPECIFIC LOGIN SCREEN
- */
-function renderRoleSpecificLoginScreen(roleMeta) {
-  const isMentor = roleMeta.roleKey === "MENTOR";
-  const isAdmin = roleMeta.roleKey === "ADMIN";
-
-  return `
-    <div class="auth-card card" style="max-width: 460px; margin: 2.5rem auto; padding: 2rem;">
-      <!-- Back Navigation to Change Account Type -->
+      <!-- 3-Option Role Selector -->
       <div style="margin-bottom: 1.25rem;">
-        <button
-          type="button"
-          id="btn-change-account-type"
-          class="btn btn-ghost"
-          style="font-size: 0.825rem; padding: 0.3rem 0.5rem; gap: 0.4rem; color: var(--text-secondary); margin-left: -0.5rem;"
-          aria-label="Change account type"
-        >
-          ${getIcon("arrow-left", "", 14)} <span>Change account type</span>
-        </button>
-      </div>
-
-      <!-- Role-Specific Header -->
-      <div style="text-align: center; margin-bottom: 1.5rem;">
-        <div style="display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 12px; background: ${roleMeta.accentBg}; color: ${roleMeta.accentColor}; margin-bottom: 0.75rem;">
-          ${getIcon(roleMeta.icon, "", 22)}
+        <label style="display: block; margin-bottom: 0.45rem; font-size: 0.775rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">
+          Select Account Role *
+        </label>
+        <div class="role-segmented-selector" role="tablist" aria-label="Select your role">
+          ${SELECTABLE_ACCOUNT_ROLES.map(role => {
+            const isActive = role.roleKey === activeRole.roleKey;
+            const activeClass = isActive ? `active role-${role.urlParam}` : "";
+            return `
+              <button
+                type="button"
+                class="role-selector-tab ${activeClass}"
+                role="tab"
+                aria-selected="${isActive ? 'true' : 'false'}"
+                id="role-tab-${role.urlParam}"
+                data-role-key="${role.roleKey}"
+                data-role-param="${role.urlParam}"
+                data-title="${role.title}"
+                data-placeholder="${role.placeholder}"
+                data-label="${role.label}"
+                data-description="${role.description}"
+                data-accent-color="${role.accentColor}"
+                data-accent-bg="${role.accentBg}"
+                tabindex="0"
+              >
+                <div class="role-tab-icon" style="background: ${role.accentBg}; color: ${role.accentColor};">
+                  ${getIcon(role.icon, "", 16)}
+                </div>
+                <div class="role-tab-title">${role.title}</div>
+                <span class="role-tab-badge ${role.badgeClass}">${role.title}</span>
+              </button>
+            `;
+          }).join("")}
         </div>
-        <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-bottom: 0.25rem;">
-          <h2 style="margin: 0; color: var(--text-primary); font-size: 1.4rem; font-weight: 700;">
-            ${roleMeta.title} Login
-          </h2>
-          <span class="role-badge ${roleMeta.badgeClass}" style="font-size: 0.65rem;">
-            ${roleMeta.title}
-          </span>
-        </div>
-        <p style="color: var(--text-secondary); margin: 0; font-size: 0.85rem;">
-          ${roleMeta.description}
+        <p id="role-selected-caption" style="font-size: 0.775rem; color: var(--text-secondary); margin: -0.75rem 0 1rem 0; line-height: 1.4; padding: 0.5rem 0.75rem; background: var(--bg-secondary); border-radius: var(--radius-md); border-left: 3px solid ${activeRole.accentColor};">
+          ${activeRole.description}
         </p>
       </div>
 
       <!-- Error / Status Container -->
-      <div id="login-error-container" style="display: none; margin-bottom: 1rem; padding: 0.75rem 1rem; border-radius: var(--radius-md); background: rgba(239, 68, 68, 0.1); border: 1px solid var(--danger-color); color: var(--danger-color); font-size: 0.85rem;"></div>
+      <div id="login-error-container" style="display: none; margin-bottom: 1.25rem; padding: 0.75rem 1rem; border-radius: var(--radius-md); background: rgba(239, 68, 68, 0.1); border: 1px solid var(--danger-color); color: var(--danger-color); font-size: 0.85rem; line-height: 1.4; align-items: center; gap: 0.5rem;">
+        <span style="flex-shrink: 0;">${getIcon("alert-circle", "", 16)}</span>
+        <span id="login-error-text"></span>
+      </div>
 
-      <!-- Demo Credentials Banner (Dev/Evaluation) -->
-      <div id="demo-credentials-container" style="margin-bottom: 1.25rem;">
-        <div style="background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-left: 4px solid var(--warning-color); border-radius: var(--radius-md); padding: 0.875rem 1rem;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
-            <span style="font-size: 0.725rem; font-weight: 700; color: var(--warning-color); letter-spacing: 0.5px; display: flex; align-items: center; gap: 0.35rem;">
-              ${getIcon("sparkles", "", 13)} DEMO & EVALUATION MODE
-            </span>
-            <span class="badge-status badge-warning" style="font-size: 0.625rem;">DEV ONLY</span>
-          </div>
-          <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.65rem;">
-            <div><strong>Admin Email:</strong> <code id="demo-email-text">demo@nxtmov.local</code></div>
-            <div><strong>Password:</strong> <code id="demo-pass-text">NxtMov@123</code></div>
-          </div>
-          <button type="button" id="use-demo-creds-btn" class="btn btn-outline" style="width: 100%; font-size: 0.775rem; padding: 0.3rem 0.5rem; color: var(--primary-color); border-color: var(--primary-color); gap: 0.35rem; justify-content: center;">
-            ${getIcon("user", "", 13)} Fill Demo Credentials
+      <!-- Quick Test Accounts Helper -->
+      <div id="demo-credentials-container" style="margin-bottom: 1.25rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 0.75rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+          <span style="font-size: 0.725rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 0.35rem;">
+            ${getIcon("sparkles", "", 13)} Quick Test Credentials
+          </span>
+          <span class="badge-status badge-info" style="font-size: 0.6rem;">EVALUATION</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.35rem;">
+          <button type="button" class="btn btn-outline quick-fill-btn" data-fill-role="STUDENT" data-email="student.tester@example.com" data-pass="Password123!" style="font-size: 0.7rem; padding: 0.25rem 0.35rem; justify-content: center;">
+            Student Fill
+          </button>
+          <button type="button" class="btn btn-outline quick-fill-btn" data-fill-role="MENTOR" data-email="prof.mentor@example.edu" data-pass="MentorPass123!" style="font-size: 0.7rem; padding: 0.25rem 0.35rem; justify-content: center;">
+            Mentor Fill
+          </button>
+          <button type="button" class="btn btn-outline quick-fill-btn" data-fill-role="ADMIN" data-email="demo@nxtmov.local" data-pass="NxtMov@123" style="font-size: 0.7rem; padding: 0.25rem 0.35rem; justify-content: center;">
+            Admin Fill
           </button>
         </div>
       </div>
 
       <!-- Login Form -->
-      <form id="login-form" novalidate data-requested-role="${roleMeta.roleKey}">
+      <form id="login-form" novalidate data-selected-role="${activeRole.roleKey}">
         <div class="form-group" style="margin-bottom: 1rem;">
-          <label style="display: block; margin-bottom: 0.45rem; font-size: 0.875rem; font-weight: 600;">
-            ${isMentor ? "Official Email Address *" : "Email Address *"}
+          <label id="login-email-label" style="display: block; margin-bottom: 0.45rem; font-size: 0.85rem; font-weight: 600; color: var(--text-primary);">
+            ${activeRole.label} *
           </label>
-          <input
-            type="email"
-            id="login-email"
-            required
-            placeholder="${isMentor ? 'faculty@institute.edu' : 'you@example.com'}"
-            class="form-input"
-            style="width: 100%;"
-            autocomplete="email"
-          >
+          <div style="position: relative;">
+            <input
+              type="email"
+              id="login-email"
+              required
+              placeholder="${activeRole.placeholder}"
+              class="form-input"
+              style="width: 100%; padding-left: 2.25rem;"
+              autocomplete="email"
+            >
+            <span style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none;">
+              ${getIcon("mail", "", 16)}
+            </span>
+          </div>
         </div>
 
-        <div class="form-group" style="margin-bottom: 1.5rem;">
+        <div class="form-group" style="margin-bottom: 1.25rem;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.45rem;">
-            <label style="font-size: 0.875rem; font-weight: 600; margin: 0;">Password *</label>
-            <a href="#/forgot-password" style="font-size: 0.775rem; color: var(--primary-color);">Forgot?</a>
+            <label style="font-size: 0.85rem; font-weight: 600; margin: 0; color: var(--text-primary);">Password *</label>
+            <a href="#/forgot-password" style="font-size: 0.775rem; color: var(--primary-color); font-weight: 500;">Forgot password?</a>
           </div>
-          <input
-            type="password"
-            id="login-password"
-            required
-            placeholder="••••••••"
-            class="form-input"
-            style="width: 100%;"
-            autocomplete="current-password"
-          >
+          <div style="position: relative;">
+            <input
+              type="password"
+              id="login-password"
+              required
+              placeholder="••••••••"
+              class="form-input"
+              style="width: 100%; padding-left: 2.25rem;"
+              autocomplete="current-password"
+            >
+            <span style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none;">
+              ${getIcon("lock", "", 16)}
+            </span>
+          </div>
         </div>
 
         <button
           type="submit"
           id="login-submit-btn"
           class="btn btn-primary"
-          style="width: 100%; justify-content: center; gap: 0.5rem; padding: 0.65rem 1rem;"
+          style="width: 100%; justify-content: center; gap: 0.5rem; padding: 0.7rem 1rem; font-weight: 600; font-size: 0.9rem; border-radius: var(--radius-md);"
         >
-          Sign In as ${roleMeta.title}
+          Sign In as ${activeRole.title}
         </button>
       </form>
 
-      <!-- Context-Aware Bottom Links -->
-      <div style="text-align: center; margin-top: 1.5rem; font-size: 0.875rem; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 1.25rem;">
-        ${roleMeta.roleKey === 'STUDENT' ? `
-          Don't have an account? <a href="#/register" style="color: var(--primary-color); font-weight: 600;">Register as Student</a>
-        ` : roleMeta.roleKey === 'MENTOR' ? `
-          Want to join as a mentor? <a href="#/apply-mentor" style="color: #a855f7; font-weight: 600;">Apply as Mentor</a>
-        ` : `
-          Need initial admin access? <a href="#/admin-bootstrap" style="color: #ef4444; font-weight: 600;">Bootstrap Administrator</a>
-        `}
+      <!-- Bottom Switch Links -->
+      <div style="text-align: center; margin-top: 1.5rem; font-size: 0.825rem; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 1.25rem; display: flex; flex-direction: column; gap: 0.4rem;">
+        <div>
+          New student? <a href="#/register" style="color: var(--primary-color); font-weight: 600;">Student Sign Up</a>
+        </div>
+        <div>
+          Want to guide talent? <a href="#/apply-mentor" style="color: #a855f7; font-weight: 600;">Apply as Mentor</a> • <a href="#/admin-bootstrap" style="color: #ef4444; font-weight: 600;">Bootstrap Admin</a>
+        </div>
       </div>
     </div>
   `;
@@ -260,37 +237,6 @@ function renderRoleSpecificLoginScreen(roleMeta) {
  * Attaches interactive event listeners to /login
  */
 export function initLoginListeners() {
-  const selectedRoleKey = getSelectedRoleFromHash();
-
-  if (!selectedRoleKey) {
-    const cards = document.querySelectorAll(".role-select-card");
-    cards.forEach(card => {
-      const selectRole = () => {
-        const param = card.getAttribute("data-role-param");
-        if (param) {
-          window.location.hash = `#/login?role=${param}`;
-        }
-      };
-
-      card.onclick = selectRole;
-      card.onkeydown = (e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          selectRole();
-        }
-      };
-    });
-    return;
-  }
-
-  const changeRoleBtn = document.getElementById("btn-change-account-type");
-  if (changeRoleBtn) {
-    changeRoleBtn.onclick = (e) => {
-      e.preventDefault();
-      window.location.hash = "#/login";
-    };
-  }
-
   const form = document.getElementById("login-form");
   if (!form) return;
 
@@ -298,25 +244,69 @@ export function initLoginListeners() {
   const passwordInput = document.getElementById("login-password");
   const submitBtn = document.getElementById("login-submit-btn");
   const errorContainer = document.getElementById("login-error-container");
-  const requestedRole = form.getAttribute("data-requested-role") || selectedRoleKey;
+  const errorText = document.getElementById("login-error-text");
+  const emailLabel = document.getElementById("login-email-label");
+  const caption = document.getElementById("role-selected-caption");
+  const roleTabs = document.querySelectorAll(".role-selector-tab");
 
   initPasswordToggle(form);
 
-  const demoBtn = document.getElementById("use-demo-creds-btn");
-  if (demoBtn) {
-    demoBtn.onclick = (e) => {
-      e.preventDefault();
-      const emailText = document.getElementById("demo-email-text")?.textContent || "demo@nxtmov.local";
-      const passText = document.getElementById("demo-pass-text")?.textContent || "NxtMov@123";
+  // Helper function to switch active role state in the UI
+  const setRole = (roleKey) => {
+    const roleMeta = SELECTABLE_ACCOUNT_ROLES.find(r => r.roleKey === roleKey) || SELECTABLE_ACCOUNT_ROLES[0];
+    form.setAttribute("data-selected-role", roleMeta.roleKey);
 
-      if (emailInput) emailInput.value = emailText;
-      if (passwordInput) passwordInput.value = passText;
-      showToast("Demo credentials filled.");
+    roleTabs.forEach(tab => {
+      const isThis = tab.getAttribute("data-role-key") === roleMeta.roleKey;
+      tab.setAttribute("aria-selected", isThis ? "true" : "false");
+      tab.className = `role-selector-tab ${isThis ? `active role-${tab.getAttribute('data-role-param')}` : ''}`;
+    });
+
+    if (emailLabel) emailLabel.textContent = `${roleMeta.label} *`;
+    if (emailInput) emailInput.placeholder = roleMeta.placeholder;
+    if (submitBtn && !submitBtn.disabled) submitBtn.textContent = `Sign In as ${roleMeta.title}`;
+    if (caption) {
+      caption.textContent = roleMeta.description;
+      caption.style.borderLeftColor = roleMeta.accentColor;
+    }
+    if (errorContainer) errorContainer.style.display = "none";
+  };
+
+  // Attach tab switch handlers
+  roleTabs.forEach(tab => {
+    const onSelect = () => {
+      const rKey = tab.getAttribute("data-role-key");
+      const rParam = tab.getAttribute("data-role-param");
+      setRole(rKey);
+      if (history.replaceState) {
+        history.replaceState(null, "", `#/login?role=${rParam}`);
+      }
+    };
+
+    tab.onclick = onSelect;
+    tab.onkeydown = (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onSelect();
+      }
+    };
+  });
+
+  // Quick fill test buttons
+  const quickFillBtns = document.querySelectorAll(".quick-fill-btn");
+  quickFillBtns.forEach(btn => {
+    btn.onclick = (e) => {
+      e.preventDefault();
+      const role = btn.getAttribute("data-fill-role");
+      const email = btn.getAttribute("data-email");
+      const pass = btn.getAttribute("data-pass");
+      setRole(role);
+      if (emailInput) emailInput.value = email;
+      if (passwordInput) passwordInput.value = pass;
+      showToast(`Filled ${role} credentials.`);
       submitBtn?.focus();
     };
-  }
-
-  loadDemoModeConfig();
+  });
 
   let isSubmitting = false;
 
@@ -324,24 +314,33 @@ export function initLoginListeners() {
     e.preventDefault();
     if (isSubmitting) return;
 
+    const selectedRole = form.getAttribute("data-selected-role") || "";
     const email = (emailInput?.value || "").trim();
     const password = passwordInput?.value || "";
 
     if (errorContainer) errorContainer.style.display = "none";
 
-    if (!email) {
-      showToast("Please enter your email address.", "danger");
-      emailInput?.focus();
+    // 1. Role presence validation
+    if (!selectedRole) {
+      const msg = "Please select your role.";
+      if (errorContainer && errorText) {
+        errorText.textContent = msg;
+        errorContainer.style.display = "flex";
+      }
+      showToast(msg, "danger");
       return;
     }
-    if (!password) {
-      showToast("Please enter your password.", "danger");
-      passwordInput?.focus();
-      return;
-    }
-    if (!validateEmail(email)) {
-      showToast("Please enter a valid email address.", "danger");
-      emailInput?.focus();
+
+    // 2. Credentials presence validation
+    if (!email || !password) {
+      const msg = "Please enter your credentials.";
+      if (errorContainer && errorText) {
+        errorText.textContent = msg;
+        errorContainer.style.display = "flex";
+      }
+      showToast(msg, "danger");
+      if (!email) emailInput?.focus();
+      else passwordInput?.focus();
       return;
     }
 
@@ -354,25 +353,35 @@ export function initLoginListeners() {
     const formData = new FormData();
     formData.append("username", email);
     formData.append("password", password);
-    formData.append("requested_account_type", requestedRole);
-    formData.append("requested_role", requestedRole);
+    formData.append("selected_role", selectedRole);
+    formData.append("requested_account_type", selectedRole);
+    formData.append("requested_role", selectedRole);
 
     try {
       const data = await API.post(
-        `/auth/login?requested_account_type=${encodeURIComponent(requestedRole || "")}`,
+        `/auth/login?selected_role=${encodeURIComponent(selectedRole)}`,
         formData,
         false
       );
 
       API.setToken(data.access_token);
       store.setState({ user: data.user, activeOrgId: data.active_org_id });
-      showToast(`Welcome, ${data.user.full_name || 'User'}!`, "success");
-      window.location.hash = "#/dashboard";
+      showToast(`Welcome back, ${data.user.full_name || 'User'}!`, "success");
+
+      // Critical Rule: Redirect strictly determined by authenticated backend role
+      const authenticatedRole = (data.user?.account_type || "STUDENT").toUpperCase();
+      if (authenticatedRole === "ADMIN") {
+        window.location.hash = "#/admin";
+      } else if (authenticatedRole === "MENTOR" || authenticatedRole === "COUNSELOR") {
+        window.location.hash = "#/mentor";
+      } else {
+        window.location.hash = "#/dashboard";
+      }
     } catch (err) {
       const msg = err.message || "Authentication failed.";
-      if (errorContainer) {
-        errorContainer.textContent = msg;
-        errorContainer.style.display = "block";
+      if (errorContainer && errorText) {
+        errorText.textContent = msg;
+        errorContainer.style.display = "flex";
       }
       showToast(msg, "danger");
       if (passwordInput) passwordInput.focus();
@@ -380,8 +389,8 @@ export function initLoginListeners() {
       isSubmitting = false;
       if (submitBtn) {
         submitBtn.disabled = false;
-        const roleMeta = SELECTABLE_ACCOUNT_ROLES.find(r => r.roleKey === requestedRole);
-        submitBtn.innerHTML = `Sign In as ${roleMeta ? roleMeta.title : 'User'}`;
+        const currentRoleMeta = SELECTABLE_ACCOUNT_ROLES.find(r => r.roleKey === form.getAttribute("data-selected-role")) || SELECTABLE_ACCOUNT_ROLES[0];
+        submitBtn.textContent = `Sign In as ${currentRoleMeta.title}`;
       }
     }
   };

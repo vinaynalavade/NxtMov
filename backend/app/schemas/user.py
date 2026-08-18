@@ -78,9 +78,12 @@ class UserStatusUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 class UserLogin(BaseModel):
-    email: str
-    password: str
+    email: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    selected_role: Optional[str] = None
     requested_account_type: Optional[str] = None
+    requested_role: Optional[str] = None
 
 class UserResponse(UserBase):
     id: int

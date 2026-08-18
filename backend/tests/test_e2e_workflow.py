@@ -23,7 +23,8 @@ def test_complete_individual_job_seeker_e2e_workflow():
     # 2. Student Login
     login_res = client.post("/api/v1/auth/login", data={
         "username": "vinay.e2e@example.com",
-        "password": "SecurePassword123!"
+        "password": "SecurePassword123!",
+        "selected_role": "student"
     })
     assert login_res.status_code == 200
     student_token = login_res.json()["access_token"]

@@ -1,4 +1,5 @@
 // Central API Client for NxtMov
+export const API_BASE_URL = "http://127.0.0.1:8000";
 
 export const getApiBase = () => {
     try {
@@ -16,7 +17,7 @@ export const getApiBase = () => {
         return "https://nxtmov-api.onrender.com/api/v1";
     }
 
-    // Local development
+    // Local development (VS Code Live Server on 127.0.0.1 or localhost)
     if (
         hostname === "localhost" ||
         hostname === "127.0.0.1"
@@ -25,7 +26,7 @@ export const getApiBase = () => {
     }
 
     // Fallback
-    return "https://nxtmov-api.onrender.com/api/v1";
+    return `${API_BASE_URL}/api/v1`;
 };
 
 export const API_BASE = getApiBase();
@@ -204,74 +205,22 @@ export class API {
       }
 
       if (!response.ok) {
-        let errorMsg = normalizeErrorMessage(data?.detail || data);
+        let errorMsg = "";
 
-        if (response.status === 401) {
-          if (isLoginEndpoint) {
-            const rawDetail = (typeof data?.detail === "string" ? data.detail : errorMsg).toLowerCase();
-            if (rawDetail.includes("password")) {
-              errorMsg = "Incorrect password. Please try again.";
-            } else if (rawDetail.includes("no account") || rawDetail.includes("not found") || rawDetail.includes("user")) {
-              errorMsg = "No account found with this email address.";
-            } else {
-              errorMsg = data?.detail || "Incorrect password. Please try again.";
-            }
-          } else {
-            errorMsg = "Your session has expired. Please log in again.";
-          }
-        } else if (response.status === 403) {
-          errorMsg = data?.detail || "You do not have permission to perform this action.";
-        } else if (response.status === 404) {
-          errorMsg = data?.detail || "The requested resource was not found.";
-        } else if (response.status === 409) {
-          errorMsg = data?.detail || "A conflict occurred with this request. Please refresh and try again.";
-        } else if (response.status === 413) {
-          errorMsg = data?.detail || "Resume file is too large. Please upload a smaller file (max 15MB).";
-        } else if (response.status === 415) {
-          errorMsg = data?.detail || "Unsupported file type. Please upload a PDF or DOCX resume.";
-        } else if (response.status === 422) {
-          errorMsg = normalizeErrorMessage(data?.detail || data, "Resume could not be processed. Please check the file and try again.");
-        } else if (response.status === 429) {
-          if (isLoginEndpoint) {
-            errorMsg = "Too many login attempts. Please wait a moment and try again.";
-          } else if (isRegisterEndpoint) {
-            errorMsg = "Too many signup attempts. Please wait a moment and try again.";
-          } else {
-            errorMsg = data?.detail || "Too many requests. Please wait a moment and try again.";
-          }
-        } else if (response.status === 400 && isRegisterEndpoint) {
-          const rawDetail = (typeof data?.detail === "string" ? data.detail : errorMsg).toLowerCase();
-          if (rawDetail.includes("exists") || rawDetail.includes("already")) {
-            errorMsg = "An account with this email already exists.";
-          } else if (rawDetail.includes("email")) {
-            errorMsg = "Please enter a valid email address.";
-          } else if (rawDetail.includes("password")) {
-            errorMsg = "Password does not meet the required security requirements.";
-          } else {
-            errorMsg = data?.detail || errorMsg;
-          }
+        if (data && typeof data.detail === "string" && data.detail.trim()) {
+          errorMsg = data.detail.trim();
+        } else {
+          errorMsg = normalizeErrorMessage(data?.detail || data);
+        }
+
+        if (response.status === 401 && !isPublicAuthEndpoint) {
+          errorMsg = "Your session has expired. Please log in again.";
         } else if (response.status === 502 || response.status === 503 || response.status === 504) {
-          const detail = typeof data?.detail === "string" ? data.detail : null;
-          if (detail && !detail.startsWith("<") && !detail.toLowerCase().includes("traceback")) {
-            errorMsg = detail;
-          } else if (response.status === 503) {
-            errorMsg = "Service is temporarily unavailable. Please try again in a few moments.";
-          } else if (response.status === 504) {
-            errorMsg = "Gateway timeout. The server took too long to respond. Please try again.";
-          } else {
-            errorMsg = "The NxtMov server or external service is currently unavailable. Please try again in a few moments.";
+          if (!errorMsg || errorMsg.startsWith("<")) {
+            errorMsg = "The NxtMov server is currently unavailable. Please try again in a few moments.";
           }
         } else if (response.status >= 500) {
-          const detail = typeof data?.detail === "string" ? data.detail : null;
-          if (detail && !detail.startsWith("<") && !detail.toLowerCase().includes("traceback")) {
-            errorMsg = detail;
-          } else if (isLoginEndpoint) {
-            errorMsg = "Something went wrong while signing you in. Please try again.";
-          } else if (isRegisterEndpoint) {
-            errorMsg = "Something went wrong while creating your account. Please try again.";
-          } else if (endpoint.includes("/resumes/upload")) {
-            errorMsg = "Resume processing failed on the server. Please try again.";
-          } else {
+          if (!errorMsg || errorMsg.startsWith("<")) {
             errorMsg = "Something went wrong on the server. Please try again.";
           }
         }
@@ -281,7 +230,7 @@ export class API {
       return data;
     } catch (error) {
       if (error instanceof TypeError && (error.message.includes("fetch") || error.message.includes("NetworkError") || error.message.includes("Failed to fetch"))) {
-        throw new Error("Unable to reach the NxtMov server. Please check your connection and try again.");
+        throw new Error("Unable to connect to the authentication server. Please make sure the NxtMov backend is running at http://127.0.0.1:8000.");
       }
       throw error;
     }

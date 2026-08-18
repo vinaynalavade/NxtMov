@@ -472,6 +472,100 @@ tr:hover td {
   border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
+/* Unified 3-Option Role Selector Segmented Control */
+.role-segmented-selector {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  padding: 0.35rem;
+  border-radius: var(--radius-lg);
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 480px) {
+  .role-segmented-selector {
+    grid-template-columns: 1fr;
+  }
+}
+
+.role-selector-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 0.5rem;
+  border-radius: var(--radius-md);
+  border: 2px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: center;
+  position: relative;
+  outline: none;
+}
+
+.role-selector-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.role-selector-tab.active {
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+  font-weight: 600;
+}
+
+.role-selector-tab.active.role-student {
+  border-color: #10b981;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.role-selector-tab.active.role-mentor {
+  border-color: #a855f7;
+  color: #a855f7;
+  background: rgba(168, 85, 247, 0.08);
+}
+
+.role-selector-tab.active.role-admin {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.role-tab-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  margin-bottom: 0.35rem;
+  transition: transform 180ms ease;
+}
+
+.role-selector-tab:hover .role-tab-icon {
+  transform: scale(1.08);
+}
+
+.role-tab-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.role-tab-badge {
+  font-size: 0.625rem;
+  margin-top: 0.2rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 9999px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 /* Account Type Selection Cards */
 .role-select-grid {
   display: grid;

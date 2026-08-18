@@ -11,7 +11,7 @@ client = TestClient(app)
 def get_authenticated_headers():
     token_resp = client.post(
         "/api/v1/auth/login",
-        data={"username": "demo@nxtmov.local", "password": "NxtMov@123"}
+        data={"username": "demo@nxtmov.local", "password": "NxtMov@123", "selected_role": "admin"}
     )
     assert token_resp.status_code == 200
     token = token_resp.json()["access_token"]

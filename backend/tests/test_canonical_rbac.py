@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.main import app
 from app.core.database import Base, engine, get_db
 from app.core.security import get_password_hash, create_access_token
-from app.models.user import User
+from app.models.user import User, AccountType
 from app.models.organization import Organization, OrganizationMembership, OrgRole, OrgType
 from app.models.company import Company
 from app.models.candidate import Candidate, CandidateStatus
@@ -237,6 +237,7 @@ class TestCanonicalRBAC:
             email=multi_email,
             full_name="Multi User",
             hashed_password=get_password_hash("TestPass123!"),
+            account_type=AccountType.ADMIN,
             is_active=True
         )
         db_session.add(multi_user)
@@ -257,7 +258,7 @@ class TestCanonicalRBAC:
         # Login and check active org context
         login_res = client.post(
             "/api/v1/auth/login",
-            data={"username": multi_email, "password": "TestPass123!"}
+            data={"username": multi_email, "password": "TestPass123!", "selected_role": "admin"}
         )
         assert login_res.status_code == 200
         data = login_res.json()

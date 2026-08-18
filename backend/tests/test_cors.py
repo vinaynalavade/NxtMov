@@ -39,7 +39,7 @@ def test_cors_post_auth_login_127_0_0_1_5501():
     headers = {"Origin": "http://127.0.0.1:5501"}
     response = client.post(
         "/api/v1/auth/login",
-        data={"username": "demo@nxtmov.local", "password": "NxtMov@123"},
+        data={"username": "demo@nxtmov.local", "password": "NxtMov@123", "selected_role": "admin"},
         headers=headers
     )
     assert response.status_code == 200

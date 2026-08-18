@@ -71,10 +71,10 @@ def on_startup():
 
     if settings.NXTMOV_DEMO_MODE:
         from app.core.database import SessionLocal
-        from app.api.v1.endpoints.auth import ensure_demo_user_exists
+        from app.core.demo_seed import seed_demo_accounts
         db = SessionLocal()
         try:
-            ensure_demo_user_exists(db)
+            seed_demo_accounts(db)
         finally:
             db.close()
 
