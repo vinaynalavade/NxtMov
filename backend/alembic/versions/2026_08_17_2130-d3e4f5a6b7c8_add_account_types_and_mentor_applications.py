@@ -88,6 +88,14 @@ def upgrade() -> None:
 
     # 3. Create mentor_applications table
     if not table_exists('mentor_applications'):
+        from sqlalchemy.dialects import postgresql as pg_types
+
+        status_enum = (
+            pg_types.ENUM('PENDING', 'APPROVED', 'REJECTED', name='mentorapplicationstatus', create_type=False)
+            if is_postgres
+            else sa.Enum('PENDING', 'APPROVED', 'REJECTED', name='mentorapplicationstatus')
+        )
+
         op.create_table(
             'mentor_applications',
             sa.Column('id', sa.Integer(), primary_key=True, autoincrement=True),
@@ -100,7 +108,7 @@ def upgrade() -> None:
             sa.Column('designation', sa.String(150), nullable=True),
             sa.Column(
                 'status',
-                sa.Enum('PENDING', 'APPROVED', 'REJECTED', name='mentorapplicationstatus', create_type=False),
+                status_enum,
                 nullable=False,
                 server_default='PENDING'
             ),

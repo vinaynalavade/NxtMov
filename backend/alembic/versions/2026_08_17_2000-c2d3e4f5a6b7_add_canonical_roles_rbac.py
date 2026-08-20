@@ -31,13 +31,40 @@ def upgrade() -> None:
     bind = op.get_bind()
     is_postgres = bind.dialect.name == "postgresql"
 
-    # In PostgreSQL, native enum types must have the new values added
+    # In PostgreSQL, native enum types must have the new values added and committed
+    # before they can be used in data manipulation (e.g. UPDATE) within SQL queries.
     if is_postgres:
-        for val in ['MENTOR', 'STUDENT']:
-            try:
-                op.execute(sa.text(f"ALTER TYPE orgrole ADD VALUE IF NOT EXISTS '{val}'"))
-            except Exception:
-                pass
+        # Check if orgrole enum exists and what values it contains
+        type_exists = bind.execute(
+            sa.text("SELECT 1 FROM pg_type WHERE typname = 'orgrole'")
+        ).scalar()
+
+        if not type_exists:
+            op.execute(
+                sa.text("CREATE TYPE orgrole AS ENUM ('ADMIN', 'MENTOR', 'RECRUITER', 'STUDENT', 'COUNSELOR', 'CANDIDATE')")
+            )
+        else:
+            existing_values = [
+                row[0]
+                for row in bind.execute(
+                    sa.text(
+                        "SELECT e.enumlabel FROM pg_type t "
+                        "JOIN pg_enum e ON t.oid = e.enumtypid "
+                        "WHERE t.typname = 'orgrole'"
+                    )
+                ).fetchall()
+            ]
+            missing_values = [v for v in ['MENTOR', 'STUDENT'] if v not in existing_values]
+
+            if missing_values:
+                # Commit current transaction block so ALTER TYPE ADD VALUE can execute and be immediately usable
+                op.execute(sa.text("COMMIT"))
+                for val in missing_values:
+                    try:
+                        op.execute(sa.text(f"ALTER TYPE orgrole ADD VALUE IF NOT EXISTS '{val}'"))
+                    except Exception:
+                        pass
+                op.execute(sa.text("BEGIN"))
 
     # Map any legacy CANDIDATE role records to STUDENT in organization_memberships
     if table_exists('organization_memberships'):

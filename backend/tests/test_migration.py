@@ -841,3 +841,107 @@ def test_app_configured_database_schema_and_startup_runner():
             assert hasattr(r, "warnings_json")
     finally:
         db.close()
+
+
+def test_migration_postgresql_legacy_orgrole_and_rbac_upgrade():
+    """
+    Verifies Alembic migration on a real PostgreSQL database with a legacy orgrole enum type
+    and legacy CANDIDATE records, matching the exact Render production failure scenario.
+    """
+    pg_url_base = os.getenv("TEST_POSTGRES_URL", "postgresql://postgres:vinay@127.0.0.1:5432")
+    try:
+        import psycopg2
+        from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+        conn = psycopg2.connect(f"{pg_url_base}/postgres", connect_timeout=3)
+        conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+    except Exception:
+        pytest.skip("PostgreSQL test instance is not reachable; skipping PostgreSQL-specific test.")
+
+    test_db_name = "nxtmov_pg_test_migration"
+    test_db_url = f"{pg_url_base}/{test_db_name}"
+
+    try:
+        cur = conn.cursor()
+        cur.execute(f"DROP DATABASE IF EXISTS {test_db_name};")
+        cur.execute(f"CREATE DATABASE {test_db_name};")
+        cur.close()
+        conn.close()
+
+        cfg = get_test_alembic_config(test_db_url)
+
+        # 1. Upgrade to f1e2d3c4b5a6
+        command.upgrade(cfg, "f1e2d3c4b5a6")
+
+        # 2. Setup production state: insert CANDIDATE records and recreate legacy orgrole enum
+        pg_conn = psycopg2.connect(test_db_url)
+        cur = pg_conn.cursor()
+        cur.execute("""
+            INSERT INTO users (email, hashed_password, full_name, is_active, is_superuser, created_at, updated_at)
+            VALUES ('vinay_pg@nxtmov.com', 'hash_pwd_pg', 'Vinay Nalavade', true, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            RETURNING id;
+        """)
+        uid = cur.fetchone()[0]
+        cur.execute("""
+            INSERT INTO organizations (name, slug, type, owner_id, created_at, updated_at)
+            VALUES ('PG Org', 'pg-org', 'INDIVIDUAL', %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            RETURNING id;
+        """, (uid,))
+        oid = cur.fetchone()[0]
+        cur.execute("""
+            INSERT INTO organization_memberships (organization_id, user_id, role, created_at, updated_at)
+            VALUES (%s, %s, 'CANDIDATE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+        """, (oid, uid))
+        cur.execute("""
+            INSERT INTO invitations (organization_id, email, role, token, status, expires_at, created_by_user_id, created_at, updated_at)
+            VALUES (%s, 'invite_pg@nxtmov.com', 'CANDIDATE', 'tok_pg', 'PENDING', CURRENT_TIMESTAMP, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+        """, (oid, uid))
+        pg_conn.commit()
+
+        # Recreate legacy orgrole without MENTOR/STUDENT
+        cur.execute("CREATE TYPE orgrole_legacy AS ENUM ('ADMIN', 'RECRUITER', 'CANDIDATE', 'COUNSELOR');")
+        cur.execute("ALTER TABLE organization_memberships ALTER COLUMN role TYPE orgrole_legacy USING role::text::orgrole_legacy;")
+        cur.execute("ALTER TABLE invitations ALTER COLUMN role TYPE orgrole_legacy USING role::text::orgrole_legacy;")
+        cur.execute("DROP TYPE orgrole;")
+        cur.execute("ALTER TYPE orgrole_legacy RENAME TO orgrole;")
+        pg_conn.commit()
+        cur.close()
+        pg_conn.close()
+
+        # 3. Upgrade f1e2d3c4b5a6 -> c2d3e4f5a6b7 -> head
+        final_rev = run_test_migration_runner(test_db_url)
+        assert final_rev == HEAD_REVISION
+
+        # 4. Verify data mapping and new columns
+        pg_conn = psycopg2.connect(test_db_url)
+        cur = pg_conn.cursor()
+        cur.execute("SELECT role FROM organization_memberships WHERE user_id = %s;", (uid,))
+        role = cur.fetchone()[0]
+        assert role == "STUDENT"
+
+        cur.execute("SELECT role FROM invitations WHERE email = 'invite_pg@nxtmov.com';")
+        inv_role = cur.fetchone()[0]
+        assert inv_role == "STUDENT"
+
+        cur.execute("SELECT account_type, status FROM users WHERE id = %s;", (uid,))
+        acc_type, status = cur.fetchone()
+        assert acc_type == "STUDENT"
+        assert status == "ACTIVE"
+
+        cur.close()
+        pg_conn.close()
+
+        # 5. Verify downgrade and re-upgrade
+        command.downgrade(cfg, "f1e2d3c4b5a6")
+        command.upgrade(cfg, "head")
+
+    finally:
+        try:
+            conn2 = psycopg2.connect(f"{pg_url_base}/postgres")
+            conn2.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+            cur2 = conn2.cursor()
+            cur2.execute(f"DROP DATABASE IF EXISTS {test_db_name};")
+            cur2.close()
+            conn2.close()
+        except Exception:
+            pass
+
