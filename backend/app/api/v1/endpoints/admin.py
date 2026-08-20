@@ -9,6 +9,7 @@ from app.models.user import User, AccountType, AccountStatus
 from app.models.mentor_application import MentorApplication, MentorApplicationStatus
 from app.models.organization import Organization, OrganizationMembership, OrgType, OrgRole
 from app.models.student_profile import StudentProfile
+from app.models.candidate import Candidate
 from app.models.resume import Resume
 from app.models.application import Application
 from app.models.notification import Notification
@@ -55,67 +56,73 @@ def approve_mentor_application(
     if not app:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mentor application not found.")
 
-    app.status = MentorApplicationStatus.APPROVED
-    app.reviewed_at = datetime.now(timezone.utc)
-    app.reviewed_by = current_admin.id
-    app.rejection_reason = None
+    try:
+        app.status = MentorApplicationStatus.APPROVED
+        app.reviewed_at = datetime.now(timezone.utc)
+        app.reviewed_by = current_admin.id
+        app.rejection_reason = None
 
-    # Activate linked user
-    user = app.user
-    if not user:
-        user = db.query(User).filter(User.email == app.official_email).first()
+        # Activate linked user
+        user = app.user
+        if not user:
+            user = db.query(User).filter(User.email == app.official_email).first()
+            if user:
+                app.user_id = user.id
+
         if user:
-            app.user_id = user.id
+            user.account_type = AccountType.MENTOR
+            user.status = AccountStatus.ACTIVE
+            user.is_active = True
+            user.is_email_verified = True
 
-    if user:
-        user.account_type = AccountType.MENTOR
-        user.status = AccountStatus.ACTIVE
-        user.is_active = True
-        user.is_email_verified = True
+            # Check or provision mentor workspace
+            m_org = db.query(Organization).filter(
+                Organization.owner_id == user.id,
+                Organization.type == OrgType.CONSULTANCY
+            ).first()
 
-        # Check or provision mentor workspace
-        m_org = db.query(Organization).filter(
-            Organization.owner_id == user.id,
-            Organization.type == OrgType.CONSULTANCY
-        ).first()
+            if not m_org:
+                clean_slug = f"mentor-hub-{user.id}-{secrets.token_hex(3)}"
+                m_org = Organization(
+                    name=f"{user.full_name}'s Mentorship Hub",
+                    slug=clean_slug,
+                    type=OrgType.CONSULTANCY,
+                    owner_id=user.id
+                )
+                db.add(m_org)
+                db.flush()
 
-        if not m_org:
-            clean_slug = f"mentor-hub-{user.id}-{secrets.token_hex(3)}"
-            m_org = Organization(
-                name=f"{user.full_name}'s Mentorship Hub",
-                slug=clean_slug,
-                type=OrgType.CONSULTANCY,
-                owner_id=user.id
-            )
-            db.add(m_org)
-            db.flush()
+            mem = db.query(OrganizationMembership).filter(
+                OrganizationMembership.user_id == user.id,
+                OrganizationMembership.organization_id == m_org.id
+            ).first()
+            if not mem:
+                mem = OrganizationMembership(
+                    user_id=user.id,
+                    organization_id=m_org.id,
+                    role=OrgRole.MENTOR
+                )
+                db.add(mem)
+            elif mem.role != OrgRole.MENTOR:
+                mem.role = OrgRole.MENTOR
 
-        mem = db.query(OrganizationMembership).filter(
-            OrganizationMembership.user_id == user.id,
-            OrganizationMembership.organization_id == m_org.id
-        ).first()
-        if not mem:
-            mem = OrganizationMembership(
-                user_id=user.id,
+            # Create confirmation notification linked to mentor's organization
+            notif = Notification(
                 organization_id=m_org.id,
-                role=OrgRole.MENTOR
+                user_id=user.id,
+                title="Mentor Application Approved!",
+                message="Your institutional mentor application has been approved. You now have full access to the Mentor Workspace.",
+                notification_type="INFO",
+                link_url="#/mentor"
             )
-            db.add(mem)
-        elif mem.role != OrgRole.MENTOR:
-            mem.role = OrgRole.MENTOR
+            db.add(notif)
 
-        # Create confirmation notification
-        notif = Notification(
-            user_id=user.id,
-            title="Mentor Application Approved!",
-            message="Your institutional mentor application has been approved. You now have full access to the Mentor Workspace.",
-            link_url="#/mentor"
-        )
-        db.add(notif)
-
-    db.commit()
-    db.refresh(app)
-    return app
+        db.commit()
+        db.refresh(app)
+        return app
+    except Exception as e:
+        db.rollback()
+        raise e
 
 @router.post("/mentor-applications/{app_id}/reject", response_model=MentorApplicationResponse, summary="Reject Mentor Application")
 def reject_mentor_application(
@@ -157,8 +164,20 @@ def list_students_admin(
     results = []
     for s in students:
         profile = db.query(StudentProfile).filter(StudentProfile.user_id == s.id).first()
-        resumes_count = db.query(Resume).filter(Resume.user_id == s.id).count() if hasattr(Resume, "user_id") else 0
-        apps_count = db.query(Application).filter(Application.user_id == s.id).count() if hasattr(Application, "user_id") else 0
+        
+        # Accurately count resumes and applications linked via Candidate model
+        resumes_count = (
+            db.query(Resume)
+            .join(Candidate, Resume.candidate_id == Candidate.id)
+            .filter((Candidate.user_id == s.id) | (Candidate.email == s.email))
+            .count()
+        )
+        apps_count = (
+            db.query(Application)
+            .join(Candidate, Application.candidate_id == Candidate.id)
+            .filter((Candidate.user_id == s.id) | (Candidate.email == s.email))
+            .count()
+        )
 
         results.append({
             "id": s.id,
@@ -194,7 +213,7 @@ def list_mentors_admin(
             "status": m.status.value if hasattr(m.status, "value") else str(m.status),
             "is_active": m.is_active,
             "institute_name": app.institute_name if app else "Academic Institute",
-            "employee_id": app.employee_id if app else "â€”",
+            "employee_id": app.employee_id if app else "—",
             "department": app.department if app else "Academic Faculty",
             "designation": app.designation if app else "Mentor",
             "created_at": m.created_at

@@ -279,3 +279,271 @@ class TestCanonicalRBAC:
         student_headers = {"Authorization": f"Bearer {switched['access_token']}"}
         restricted_res = client.get("/api/v1/candidates", headers=student_headers)
         assert restricted_res.status_code == 403
+
+    def test_mentor_application_approval_and_notification_regression(self, db_session):
+        from app.models.notification import Notification
+        from app.models.mentor_application import MentorApplication, MentorApplicationStatus
+        from app.core.rate_limiter import register_rate_limiter, login_rate_limiter
+        register_rate_limiter._records.clear()
+        login_rate_limiter._records.clear()
+
+        # 1. Admin setup
+        admin_user, admin_org, _ = create_test_user_and_org(db_session, "admin_approver", OrgRole.ADMIN, "Admin Approver Org")
+        admin_user.account_type = AccountType.ADMIN
+        db_session.commit()
+        admin_headers = get_auth_headers(admin_user, admin_org, OrgRole.ADMIN)
+
+        # 2. Submit Mentor Application
+        mentor_email = f"prof_mentor_{uuid.uuid4().hex[:6]}@univ.ac.in"
+        apply_res = client.post("/api/v1/auth/apply-mentor", json={
+            "full_name": "Professor Mentor",
+            "official_email": mentor_email,
+            "password": "SecurePassword123!",
+            "phone": "+91 9876543210",
+            "institute_name": "Indian Institute of Science",
+            "employee_id": "IIS-FAC-2026",
+            "department": "Computer Science",
+            "designation": "Professor"
+        })
+        assert apply_res.status_code == 200
+        app_id = apply_res.json()["application_id"]
+
+        # 3. Verify user is PENDING prior to approval
+        pending_user = db_session.query(User).filter(User.email == mentor_email).first()
+        assert pending_user is not None
+        assert pending_user.account_type == AccountType.MENTOR
+        assert pending_user.status.value == "PENDING"
+        assert pending_user.is_active is False
+
+        # Attempt login before approval -> 403
+        unapproved_login = client.post("/api/v1/auth/login", data={
+            "username": mentor_email,
+            "password": "SecurePassword123!",
+            "selected_role": "mentor"
+        })
+        assert unapproved_login.status_code == 403
+        assert "Your mentor application is currently under review" in unapproved_login.json()["detail"]
+
+        # 4. Admin Approves Mentor Application
+        approve_res = client.post(f"/api/v1/admin/mentor-applications/{app_id}/approve", headers=admin_headers)
+        assert approve_res.status_code == 200
+        approved_app = approve_res.json()
+        assert approved_app["status"] == "APPROVED"
+
+        # 5. Verify database state after approval
+        db_session.expire_all()
+        approved_user = db_session.query(User).filter(User.email == mentor_email).first()
+        assert approved_user.status.value == "ACTIVE"
+        assert approved_user.is_active is True
+        assert approved_user.is_email_verified is True
+
+        mentor_org = db_session.query(Organization).filter(
+            Organization.owner_id == approved_user.id,
+            Organization.type == OrgType.CONSULTANCY
+        ).first()
+        assert mentor_org is not None, "Mentor workspace organization must be provisioned"
+
+        mentor_membership = db_session.query(OrganizationMembership).filter(
+            OrganizationMembership.user_id == approved_user.id,
+            OrganizationMembership.organization_id == mentor_org.id
+        ).first()
+        assert mentor_membership is not None
+        assert mentor_membership.role == OrgRole.MENTOR
+
+        # 6. Verify Notification with non-null organization_id
+        notif = db_session.query(Notification).filter(
+            Notification.user_id == approved_user.id,
+            Notification.title == "Mentor Application Approved!"
+        ).first()
+        assert notif is not None, "Approval notification must be created"
+        assert notif.organization_id is not None, "Notification organization_id must NOT be None"
+        assert notif.organization_id == mentor_org.id, "Notification organization_id must match mentor's workspace organization"
+        assert notif.notification_type == "INFO"
+
+        # 7. Mentor logs in after approval
+        approved_login = client.post("/api/v1/auth/login", data={
+            "username": mentor_email,
+            "password": "SecurePassword123!",
+            "selected_role": "mentor"
+        })
+        assert approved_login.status_code == 200
+        login_data = approved_login.json()
+        assert "access_token" in login_data
+        assert login_data["user"]["account_type"] == "MENTOR"
+        assert login_data["active_org_id"] == mentor_org.id
+        assert login_data["user"]["active_organization"]["role"] == "MENTOR"
+
+        # 8. Fetch notifications as logged-in mentor
+        mentor_token = login_data["access_token"]
+        notif_res = client.get("/api/v1/notifications", headers={"Authorization": f"Bearer {mentor_token}"})
+        assert notif_res.status_code == 200
+        notifs = notif_res.json()["notifications"]
+        assert any(n["title"] == "Mentor Application Approved!" for n in notifs)
+
+    def test_mentor_approval_error_message_is_not_misleading(self, db_session):
+        admin_user, admin_org, _ = create_test_user_and_org(db_session, "admin_err_check", OrgRole.ADMIN, "Admin Org")
+        admin_user.account_type = AccountType.ADMIN
+        db_session.commit()
+        admin_headers = get_auth_headers(admin_user, admin_org, OrgRole.ADMIN)
+
+        # 1. Non-existent application
+        res_404 = client.post("/api/v1/admin/mentor-applications/9999999/approve", headers=admin_headers)
+        assert res_404.status_code == 404
+        detail_404 = res_404.json()["detail"]
+        assert "Mentor application not found" in detail_404
+        assert "Resume processing" not in detail_404
+
+        # 2. Non-admin forbidden
+        student_user, student_org, _ = create_test_user_and_org(db_session, "student_err_check", OrgRole.STUDENT, "Student Org")
+        student_headers = get_auth_headers(student_user, student_org, OrgRole.STUDENT)
+        res_403 = client.post("/api/v1/admin/mentor-applications/1/approve", headers=student_headers)
+        assert res_403.status_code == 403
+        assert "Resume processing" not in res_403.json().get("detail", "")
+
+    def test_admin_student_resume_and_application_counts(self, db_session):
+        from app.models.resume import Resume
+        from app.models.application import Application, ApplicationStage
+        from app.models.candidate import Candidate, CandidateStatus
+
+        # 1. Setup admin
+        admin_user, admin_org, _ = create_test_user_and_org(db_session, "admin_counter", OrgRole.ADMIN, "Admin Count Org")
+        admin_user.account_type = AccountType.ADMIN
+        db_session.commit()
+        admin_headers = get_auth_headers(admin_user, admin_org, OrgRole.ADMIN)
+
+        # 2. Setup student with Candidate record and Resume
+        student_email = f"student_count_{uuid.uuid4().hex[:6]}@example.com"
+        student_user = User(
+            email=student_email,
+            full_name="Counting Student",
+            hashed_password=get_password_hash("Password123!"),
+            account_type=AccountType.STUDENT,
+            is_active=True
+        )
+        db_session.add(student_user)
+        db_session.flush()
+
+        candidate = Candidate(
+            organization_id=admin_org.id,
+            user_id=student_user.id,
+            full_name=student_user.full_name,
+            email=student_user.email,
+            status=CandidateStatus.NEW
+        )
+        db_session.add(candidate)
+        db_session.flush()
+
+        resume = Resume(
+            organization_id=admin_org.id,
+            candidate_id=candidate.id,
+            file_name="Student_Resume.pdf",
+            file_type="application/pdf",
+            file_url="/uploads/resumes/dummy.pdf",
+            file_size_bytes=1024,
+            is_current=True
+        )
+        db_session.add(resume)
+        db_session.commit()
+
+        # 3. Query Admin Students Endpoint
+        res = client.get("/api/v1/admin/students", headers=admin_headers)
+        assert res.status_code == 200
+        students_list = res.json()
+        target_student = next((s for s in students_list if s["id"] == student_user.id), None)
+        assert target_student is not None
+        assert target_student["resumes_count"] >= 1, "Resume count must reflect actual linked resumes"
+
+    def test_rejected_mentor_login_message(self, db_session):
+        from app.models.mentor_application import MentorApplication, MentorApplicationStatus
+        from app.core.rate_limiter import login_rate_limiter, register_rate_limiter
+        login_rate_limiter._records.clear()
+        register_rate_limiter._records.clear()
+
+        # 1. Admin setup
+        admin_user, admin_org, _ = create_test_user_and_org(db_session, "admin_rejector", OrgRole.ADMIN, "Admin Reject Org")
+        admin_user.account_type = AccountType.ADMIN
+        db_session.commit()
+        admin_headers = get_auth_headers(admin_user, admin_org, OrgRole.ADMIN)
+
+        # 2. Submit Mentor Application
+        mentor_email = f"prof_reject_{uuid.uuid4().hex[:6]}@univ.edu"
+        apply_res = client.post("/api/v1/auth/apply-mentor", json={
+            "full_name": "Rejected Mentor",
+            "official_email": mentor_email,
+            "password": "Password123!",
+            "phone": "+91 9123456780",
+            "institute_name": "Test Institute",
+            "employee_id": "REJ-101",
+            "department": "Physics",
+            "designation": "Lecturer"
+        })
+        assert apply_res.status_code == 200
+        app_id = apply_res.json()["application_id"]
+
+        # 3. Admin Rejects Mentor Application
+        reject_res = client.post(
+            f"/api/v1/admin/mentor-applications/{app_id}/reject",
+            headers=admin_headers,
+            json={"rejection_reason": "Incomplete institutional credentials"}
+        )
+        assert reject_res.status_code == 200
+
+        # 4. Mentor Login attempt after rejection
+        login_res = client.post("/api/v1/auth/login", data={
+            "username": mentor_email,
+            "password": "Password123!",
+            "selected_role": "mentor"
+        })
+        assert login_res.status_code == 403
+        detail = login_res.json()["detail"]
+        assert "Your mentor application was not approved" in detail
+        assert "Incomplete institutional credentials" in detail
+
+    def test_password_reset_flow_with_valid_and_expired_tokens(self, db_session):
+        # 1. Create user
+        reset_email = f"reset_user_{uuid.uuid4().hex[:6]}@example.com"
+        user = User(
+            email=reset_email,
+            full_name="Reset User",
+            hashed_password=get_password_hash("OldPassword123!"),
+            account_type=AccountType.STUDENT,
+            is_active=True
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        # 2. Request forgot password
+        forgot_res = client.post("/api/v1/auth/forgot-password", json={"email": reset_email})
+        assert forgot_res.status_code == 200
+        assert "password reset link has been sent" in forgot_res.json()["message"]
+
+        # 3. Retrieve generated token from DB
+        db_session.expire_all()
+        user_db = db_session.query(User).filter(User.email == reset_email).first()
+        assert user_db.password_reset_token is not None
+        token_val = user_db.password_reset_token.split(":")[0]
+
+        # 4. Perform Reset with valid token
+        reset_res = client.post("/api/v1/auth/reset-password", json={
+            "token": token_val,
+            "new_password": "NewPassword123!"
+        })
+        assert reset_res.status_code == 200
+        assert "Password updated successfully" in reset_res.json()["message"]
+
+        # 5. Verify login with new password
+        login_new = client.post("/api/v1/auth/login", data={
+            "username": reset_email,
+            "password": "NewPassword123!",
+            "selected_role": "student"
+        })
+        assert login_new.status_code == 200
+
+        # 6. Attempt reset with already used / invalid token -> 400
+        invalid_reset = client.post("/api/v1/auth/reset-password", json={
+            "token": token_val,
+            "new_password": "AnotherPassword123!"
+        })
+        assert invalid_reset.status_code == 400
+        assert "invalid or has expired" in invalid_reset.json()["detail"]
+

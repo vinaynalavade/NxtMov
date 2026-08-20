@@ -876,3 +876,287 @@ export async function initVerifyEmailListeners() {
     if (actionContainer) actionContainer.style.display = "block";
   }
 }
+
+/**
+ * 6. FORGOT PASSWORD VIEW
+ */
+export function renderForgotPassword() {
+  return `
+    <div class="auth-card card" style="max-width: 460px; margin: 3rem auto; padding: 2.25rem 2rem; border-radius: var(--radius-xl); box-shadow: var(--shadow-lg);">
+      <div style="text-align: center; margin-bottom: 1.5rem;">
+        <div style="display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 14px; background: rgba(79, 70, 229, 0.1); color: var(--primary-color); margin-bottom: 0.75rem;">
+          ${getIcon("lock", "", 24)}
+        </div>
+        <h2 style="margin: 0 0 0.35rem 0; color: var(--text-primary); font-size: 1.4rem; font-weight: 700;">
+          Reset Your Password
+        </h2>
+        <p style="color: var(--text-muted); margin: 0; font-size: 0.85rem; line-height: 1.4;">
+          Enter your registered email address and we'll send you instructions to reset your password.
+        </p>
+      </div>
+
+      <div id="forgot-status-box" style="display: none; margin-bottom: 1.25rem; padding: 0.85rem 1rem; border-radius: var(--radius-md); font-size: 0.85rem; line-height: 1.4;"></div>
+
+      <form id="forgot-password-form" novalidate>
+        <div class="form-group" style="margin-bottom: 1.25rem;">
+          <label style="display: block; margin-bottom: 0.45rem; font-size: 0.85rem; font-weight: 600; color: var(--text-primary);">Email Address *</label>
+          <div style="position: relative;">
+            <input
+              type="email"
+              id="forgot-email"
+              required
+              placeholder="user@example.com"
+              class="form-input"
+              style="width: 100%; padding-left: 2.25rem;"
+              autocomplete="email"
+            >
+            <span style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none;">
+              ${getIcon("mail", "", 16)}
+            </span>
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          id="forgot-submit-btn"
+          class="btn btn-primary"
+          style="width: 100%; justify-content: center; gap: 0.5rem; padding: 0.65rem 1rem; font-weight: 600; font-size: 0.9rem;"
+        >
+          Send Password Reset Link
+        </button>
+      </form>
+
+      <div style="text-align: center; margin-top: 1.5rem; font-size: 0.825rem; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 1.25rem;">
+        Remember your password? <a href="#/login" style="color: var(--primary-color); font-weight: 600;">Return to Sign In</a>
+      </div>
+    </div>
+  `;
+}
+
+export function initForgotPasswordListeners() {
+  const form = document.getElementById("forgot-password-form");
+  if (!form) return;
+
+  const emailInput = document.getElementById("forgot-email");
+  const submitBtn = document.getElementById("forgot-submit-btn");
+  const statusBox = document.getElementById("forgot-status-box");
+
+  let isSubmitting = false;
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    if (isSubmitting) return;
+
+    const email = (emailInput?.value || "").trim();
+    if (!email) {
+      showToast("Please enter your email address.", "danger");
+      emailInput?.focus();
+      return;
+    }
+
+    isSubmitting = true;
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `${getIcon("spinner", "icon-spin", 16)} Sending Link...`;
+    }
+
+    try {
+      const res = await API.post("/auth/forgot-password", { email });
+      if (statusBox) {
+        statusBox.style.display = "block";
+        statusBox.style.background = "rgba(16, 185, 129, 0.1)";
+        statusBox.style.border = "1px solid var(--success-color)";
+        statusBox.style.color = "var(--success-color)";
+        statusBox.innerHTML = `<strong>✓ Link Sent!</strong><br>${res.message || 'If an account with this email exists, a password reset link has been sent.'}`;
+      }
+      showToast(res.message || "Password reset link sent.", "success");
+      form.reset();
+    } catch (err) {
+      showToast(err.message || "Failed to process password reset request.", "danger");
+    } finally {
+      isSubmitting = false;
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = "Send Password Reset Link";
+      }
+    }
+  };
+}
+
+/**
+ * 7. RESET PASSWORD VIEW
+ */
+export function renderResetPassword() {
+  return `
+    <div class="auth-card card" style="max-width: 460px; margin: 3rem auto; padding: 2.25rem 2rem; border-radius: var(--radius-xl); box-shadow: var(--shadow-lg);">
+      <div style="text-align: center; margin-bottom: 1.5rem;">
+        <div style="display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 14px; background: rgba(79, 70, 229, 0.1); color: var(--primary-color); margin-bottom: 0.75rem;">
+          ${getIcon("lock", "", 24)}
+        </div>
+        <h2 style="margin: 0 0 0.35rem 0; color: var(--text-primary); font-size: 1.4rem; font-weight: 700;">
+          Set New Password
+        </h2>
+        <p style="color: var(--text-muted); margin: 0; font-size: 0.85rem; line-height: 1.4;">
+          Choose a new password for your account.
+        </p>
+      </div>
+
+      <div id="reset-status-box" style="display: none; margin-bottom: 1.25rem; padding: 0.85rem 1rem; border-radius: var(--radius-md); font-size: 0.85rem; line-height: 1.4;"></div>
+
+      <form id="reset-password-form" novalidate>
+        <div class="form-group" style="margin-bottom: 1rem;">
+          <label style="display: block; margin-bottom: 0.45rem; font-size: 0.85rem; font-weight: 600; color: var(--text-primary);">New Password *</label>
+          <div style="position: relative;">
+            <input
+              type="password"
+              id="reset-new-password"
+              required
+              minlength="6"
+              placeholder="••••••••"
+              class="form-input"
+              style="width: 100%; padding-left: 2.25rem;"
+            >
+            <span style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none;">
+              ${getIcon("lock", "", 16)}
+            </span>
+          </div>
+          <div id="reset-password-strength-container" style="display: none; margin-top: 0.5rem;"></div>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 1.5rem;">
+          <label style="display: block; margin-bottom: 0.45rem; font-size: 0.85rem; font-weight: 600; color: var(--text-primary);">Confirm New Password *</label>
+          <div style="position: relative;">
+            <input
+              type="password"
+              id="reset-confirm-password"
+              required
+              minlength="6"
+              placeholder="••••••••"
+              class="form-input"
+              style="width: 100%; padding-left: 2.25rem;"
+            >
+            <span style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none;">
+              ${getIcon("lock", "", 16)}
+            </span>
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          id="reset-submit-btn"
+          class="btn btn-primary"
+          style="width: 100%; justify-content: center; gap: 0.5rem; padding: 0.65rem 1rem; font-weight: 600; font-size: 0.9rem;"
+        >
+          Update Password
+        </button>
+      </form>
+
+      <div style="text-align: center; margin-top: 1.5rem; font-size: 0.825rem; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 1.25rem;">
+        <a href="#/login" style="color: var(--primary-color); font-weight: 600;">Return to Sign In</a>
+      </div>
+    </div>
+  `;
+}
+
+export function initResetPasswordListeners() {
+  const form = document.getElementById("reset-password-form");
+  if (!form) return;
+
+  const newPassInput = document.getElementById("reset-new-password");
+  const confPassInput = document.getElementById("reset-confirm-password");
+  const strengthContainer = document.getElementById("reset-password-strength-container");
+  const submitBtn = document.getElementById("reset-submit-btn");
+  const statusBox = document.getElementById("reset-status-box");
+
+  initPasswordToggle(form);
+
+  if (newPassInput && strengthContainer) {
+    initPasswordStrengthIndicator(newPassInput, strengthContainer);
+  }
+
+  // Extract token from URL hash or query params
+  let token = "";
+  const hash = window.location.hash;
+  if (hash.includes("?")) {
+    const params = new URLSearchParams(hash.split("?")[1]);
+    token = params.get("token") || "";
+  }
+  if (!token && window.location.search) {
+    const params = new URLSearchParams(window.location.search);
+    token = params.get("token") || "";
+  }
+
+  if (!token) {
+    if (statusBox) {
+      statusBox.style.display = "block";
+      statusBox.style.background = "rgba(239, 68, 68, 0.1)";
+      statusBox.style.border = "1px solid var(--danger-color)";
+      statusBox.style.color = "var(--danger-color)";
+      statusBox.innerHTML = "<strong>Invalid Reset Link</strong><br>Missing or invalid password reset token. Please request a new password reset link.";
+    }
+    if (submitBtn) submitBtn.disabled = true;
+    return;
+  }
+
+  let isSubmitting = false;
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    if (isSubmitting) return;
+
+    const new_password = newPassInput?.value || "";
+    const confirm_password = confPassInput?.value || "";
+
+    if (!new_password || !confirm_password) {
+      showToast("Please complete all password fields.", "danger");
+      return;
+    }
+    if (new_password.length < 6) {
+      showToast("Password must be at least 6 characters.", "danger");
+      newPassInput?.focus();
+      return;
+    }
+    if (new_password !== confirm_password) {
+      showToast("Passwords do not match.", "danger");
+      confPassInput?.focus();
+      return;
+    }
+
+    isSubmitting = true;
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `${getIcon("spinner", "icon-spin", 16)} Updating Password...`;
+    }
+
+    try {
+      const res = await API.post("/auth/reset-password", { token, new_password });
+      showToast(res.message || "Password updated successfully!", "success");
+      if (statusBox) {
+        statusBox.style.display = "block";
+        statusBox.style.background = "rgba(16, 185, 129, 0.1)";
+        statusBox.style.border = "1px solid var(--success-color)";
+        statusBox.style.color = "var(--success-color)";
+        statusBox.innerHTML = "<strong>✓ Password Updated!</strong><br>Your password has been changed successfully. Redirecting to sign in...";
+      }
+      setTimeout(() => {
+        window.location.hash = "#/login";
+      }, 1500);
+    } catch (err) {
+      const errMsg = err.message || "This password reset link is invalid or has expired.";
+      if (statusBox) {
+        statusBox.style.display = "block";
+        statusBox.style.background = "rgba(239, 68, 68, 0.1)";
+        statusBox.style.border = "1px solid var(--danger-color)";
+        statusBox.style.color = "var(--danger-color)";
+        statusBox.innerHTML = `<strong>Reset Failed</strong><br>${errMsg}`;
+      }
+      showToast(errMsg, "danger");
+    } finally {
+      isSubmitting = false;
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = "Update Password";
+      }
+    }
+  };
+}

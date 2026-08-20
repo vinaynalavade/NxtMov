@@ -167,7 +167,7 @@ def test_student_login_with_mentor_role_rejected():
         "selected_role": "mentor"
     })
     assert response.status_code == 403
-    assert "This account does not belong to the selected role" in response.json()["detail"]
+    assert "This account is not registered for the selected role" in response.json()["detail"]
 
 def test_student_login_with_admin_role_rejected():
     login_rate_limiter._records.clear()
@@ -186,7 +186,7 @@ def test_student_login_with_admin_role_rejected():
         "selected_role": "admin"
     })
     assert response.status_code == 403
-    assert "This account does not belong to the selected role" in response.json()["detail"]
+    assert "This account is not registered for the selected role" in response.json()["detail"]
 
 def test_mentor_login_and_cross_role_validation():
     login_rate_limiter._records.clear()
@@ -233,7 +233,7 @@ def test_mentor_login_and_cross_role_validation():
         "selected_role": "student"
     })
     assert res_as_student.status_code == 403
-    assert "This account does not belong to the selected role" in res_as_student.json()["detail"]
+    assert "This account is not registered for the selected role" in res_as_student.json()["detail"]
 
     # 3. Mentor logs in with Admin selected -> REJECTED
     res_as_admin = client.post("/api/v1/auth/login", data={
@@ -242,7 +242,7 @@ def test_mentor_login_and_cross_role_validation():
         "selected_role": "admin"
     })
     assert res_as_admin.status_code == 403
-    assert "This account does not belong to the selected role" in res_as_admin.json()["detail"]
+    assert "This account is not registered for the selected role" in res_as_admin.json()["detail"]
 
 def test_admin_cross_role_validation():
     login_rate_limiter._records.clear()
@@ -254,7 +254,7 @@ def test_admin_cross_role_validation():
         "selected_role": "student"
     })
     assert res_student.status_code == 403
-    assert "This account does not belong to the selected role" in res_student.json()["detail"]
+    assert "This account is not registered for the selected role" in res_student.json()["detail"]
 
     # 2. Admin selects Mentor -> REJECTED
     res_mentor = client.post("/api/v1/auth/login", data={
@@ -263,7 +263,7 @@ def test_admin_cross_role_validation():
         "selected_role": "mentor"
     })
     assert res_mentor.status_code == 403
-    assert "This account does not belong to the selected role" in res_mentor.json()["detail"]
+    assert "This account is not registered for the selected role" in res_mentor.json()["detail"]
 
 def test_login_invalid_password():
     login_rate_limiter._records.clear()
@@ -282,7 +282,7 @@ def test_login_invalid_password():
         "selected_role": "student"
     })
     assert response.status_code == 401
-    assert "Invalid username or password" in response.json()["detail"]
+    assert "The email address or password you entered is incorrect" in response.json()["detail"]
 
 def test_login_nonexistent_user():
     login_rate_limiter._records.clear()
@@ -293,7 +293,7 @@ def test_login_nonexistent_user():
         "selected_role": "student"
     })
     assert response.status_code == 401
-    assert "Invalid username or password" in response.json()["detail"]
+    assert "The email address or password you entered is incorrect" in response.json()["detail"]
 
 def test_disabled_account_login_rejected():
     login_rate_limiter._records.clear()
@@ -324,7 +324,7 @@ def test_disabled_account_login_rejected():
         "selected_role": "student"
     })
     assert res.status_code == 403
-    assert "Your account is currently disabled" in res.json()["detail"]
+    assert "Your account has been disabled" in res.json()["detail"]
 
 def test_login_rate_limiting():
     login_rate_limiter._records.clear()

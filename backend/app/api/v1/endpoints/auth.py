@@ -608,17 +608,11 @@ async def login(
     if not user or not verify_password(str(password), user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password.",
+            detail="The email address or password you entered is incorrect.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # 5. Account Lifecycle & Disabled Checks
-    if not user.is_active or user.status == AccountStatus.SUSPENDED:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your account is currently disabled."
-        )
-
+    # 5. Account Lifecycle & Status Checks
     user_status_str = user.status.value if hasattr(user.status, "value") else str(user.status).upper()
     if user_status_str == "PENDING":
         app = db.query(MentorApplication).filter(
@@ -627,21 +621,27 @@ async def login(
         if app and app.status == MentorApplicationStatus.PENDING:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Your Mentor application is currently pending administrator review. You will be notified once approved."
+                detail="Your mentor application is currently under review. You will be able to access the Mentor Workspace once an administrator approves your application."
             )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your account is currently pending administrator approval."
+            detail="Your account is currently under review. You will be able to log in once an administrator approves your account."
         )
 
     if user_status_str == "REJECTED":
         app = db.query(MentorApplication).filter(
             (MentorApplication.user_id == user.id) | (MentorApplication.official_email == user.email)
         ).order_by(MentorApplication.id.desc()).first()
-        reason = f" Reason: {app.rejection_reason}" if (app and app.rejection_reason) else ""
+        reason_str = f" Reason: {app.rejection_reason}." if (app and app.rejection_reason) else ""
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Your Mentor application was not approved.{reason}"
+            detail=f"Your mentor application was not approved.{reason_str} Please contact the administrator for further information."
+        )
+
+    if not user.is_active or user.status == AccountStatus.SUSPENDED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account has been disabled. Please contact the administrator for assistance."
         )
 
     # 6. Strict Role Comparison (Backend Source of Truth)
@@ -652,7 +652,7 @@ async def login(
     if actual_account_type_str != clean_req:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="This account does not belong to the selected role."
+            detail="This account is not registered for the selected role."
         )
 
     # 7. Create Authenticated Session & JWT Token

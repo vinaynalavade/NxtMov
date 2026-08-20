@@ -54,7 +54,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
         headers["Access-Control-Allow-Credentials"] = "true"
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "Resume processing failed on the server. Please try again."},
+        content={"detail": "An unexpected server error occurred. Please try again later."},
         headers=headers,
     )
 

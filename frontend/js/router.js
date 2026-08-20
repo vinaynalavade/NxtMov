@@ -6,7 +6,9 @@ import {
   renderRegister, initRegisterListeners,
   renderApplyMentor, initApplyMentorListeners,
   renderAdminBootstrap, initAdminBootstrapListeners,
-  renderVerifyEmail, initVerifyEmailListeners
+  renderVerifyEmail, initVerifyEmailListeners,
+  renderForgotPassword, initForgotPasswordListeners,
+  renderResetPassword, initResetPasswordListeners
 } from "./views/auth.js";
 import { renderDashboard, initDashboardListeners } from "./views/dashboard.js";
 import { renderAdminView, initAdminListeners } from "./views/admin.js";
@@ -33,6 +35,8 @@ const routes = {
   "/apply-mentor": { render: renderApplyMentor, init: initApplyMentorListeners, public: true },
   "/admin-bootstrap": { render: renderAdminBootstrap, init: initAdminBootstrapListeners, public: true },
   "/verify-email": { render: renderVerifyEmail, init: initVerifyEmailListeners, public: true },
+  "/forgot-password": { render: renderForgotPassword, init: initForgotPasswordListeners, public: true },
+  "/reset-password": { render: renderResetPassword, init: initResetPasswordListeners, public: true },
   "/dashboard": { render: renderDashboard, init: initDashboardListeners },
   "/admin": { render: renderAdminView, init: initAdminListeners },
   "/admin-applications": { render: renderAdminView, init: initAdminListeners },

@@ -19,8 +19,7 @@ const NAVIGATION_SCHEMA = [
       { path: "/resume", label: "Resume & ATS", icon: "resume" },
       { path: "/opportunities", label: "Jobs", icon: "opportunities" },
       { path: "/applications", label: "Applications", icon: "applications" },
-      { path: "/recommendations", label: "Recommendations", icon: "recommendations" },
-      { path: "/mentor", label: "Mentors", icon: "mentor" }
+      { path: "/recommendations", label: "Recommendations", icon: "recommendations" }
     ]
   },
   {
@@ -39,19 +38,14 @@ const NAVIGATION_SCHEMA = [
     roles: ["MENTOR"],
     items: [
       { path: "/dashboard", label: "Dashboard", icon: "dashboard" },
-      { path: "/mentor", label: "My Students", icon: "mentor" },
-      { path: "/mentor", label: "Student Progress", icon: "chart" },
-      { path: "/applications", label: "Mentorship Requests", icon: "applications" },
-      { path: "/followups", label: "Sessions", icon: "clock" },
-      { path: "/mentor", label: "Feedback", icon: "message-square" }
+      { path: "/mentor", label: "Assigned Students", icon: "mentor" }
     ]
   },
   {
     category: "ACCOUNT",
     roles: ["MENTOR"],
     items: [
-      { path: "/profile", label: "Profile", icon: "profile" },
-      { path: "/profile", label: "Settings", icon: "settings" }
+      { path: "/profile", label: "Profile & Settings", icon: "profile" }
     ]
   },
 
@@ -69,22 +63,19 @@ const NAVIGATION_SCHEMA = [
     category: "PEOPLE & APPROVALS",
     roles: ["ADMIN"],
     items: [
+      { path: "/admin-applications", label: "Mentor Applications", icon: "shield-check" },
       { path: "/admin-students", label: "Students", icon: "graduation-cap" },
       { path: "/admin-mentors", label: "Mentors", icon: "mentor" },
-      { path: "/admin-applications", label: "Mentor Applications", icon: "shield-check" },
-      { path: "/admin-users", label: "Users & Roles", icon: "users" },
-      { path: "/admin-applications", label: "Approvals", icon: "check-circle" }
+      { path: "/admin-users", label: "Users & Roles", icon: "users" }
     ]
   },
   {
     category: "GOVERNANCE & SYSTEM",
     roles: ["ADMIN"],
     items: [
-      { path: "/team", label: "Organizations", icon: "team" },
-      { path: "/team", label: "Roles & Permissions", icon: "lock" },
-      { path: "/candidates", label: "Reports & Talent Pool", icon: "candidates" },
-      { path: "/import", label: "Data Importer", icon: "import" },
-      { path: "/admin-users", label: "Audit Logs & Settings", icon: "settings" }
+      { path: "/team", label: "Organizations & Team", icon: "team" },
+      { path: "/candidates", label: "Talent Pool Roster", icon: "candidates" },
+      { path: "/import", label: "Data Importer", icon: "import" }
     ]
   }
 ];

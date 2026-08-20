@@ -141,32 +141,50 @@ export function renderAdminView() {
 
 export function initAdminListeners() {
   loadAdminStats();
-  loadMentorApplications();
 
-  // Tab switching
-  document.querySelectorAll(".profile-tab-btn").forEach(btn => {
-    btn.onclick = () => {
-      document.querySelectorAll(".profile-tab-btn").forEach(b => {
+  const switchTab = (targetId) => {
+    document.querySelectorAll(".profile-tab-btn").forEach(b => {
+      const isTarget = b.getAttribute("data-tab") === targetId;
+      if (isTarget) {
+        b.classList.add("active");
+        b.style.borderBottom = "2px solid var(--primary-color)";
+        b.style.color = "var(--primary-color)";
+      } else {
         b.classList.remove("active");
         b.style.borderBottom = "none";
         b.style.color = "var(--text-secondary)";
-      });
-      document.querySelectorAll(".admin-tab-content").forEach(c => c.style.display = "none");
+      }
+    });
 
-      btn.classList.add("active");
-      btn.style.borderBottom = "2px solid var(--primary-color)";
-      btn.style.color = "var(--primary-color)";
+    document.querySelectorAll(".admin-tab-content").forEach(c => c.style.display = "none");
+    const targetEl = document.getElementById(targetId);
+    if (targetEl) targetEl.style.display = "block";
 
+    if (targetId === "tab-mentor-apps") loadMentorApplications();
+    else if (targetId === "tab-students") loadStudents();
+    else if (targetId === "tab-mentors") loadMentors();
+    else if (targetId === "tab-all-users") loadAllUsers();
+  };
+
+  // Tab switching button clicks
+  document.querySelectorAll(".profile-tab-btn").forEach(btn => {
+    btn.onclick = () => {
       const targetId = btn.getAttribute("data-tab");
-      const targetEl = document.getElementById(targetId);
-      if (targetEl) targetEl.style.display = "block";
-
-      if (targetId === "tab-mentor-apps") loadMentorApplications();
-      else if (targetId === "tab-students") loadStudents();
-      else if (targetId === "tab-mentors") loadMentors();
-      else if (targetId === "tab-all-users") loadAllUsers();
+      switchTab(targetId);
     };
   });
+
+  // Determine initial active tab from current route hash
+  const hash = (window.location.hash || "").replace(/^#\/?/, "").split("?")[0];
+  if (hash === "admin-students") {
+    switchTab("tab-students");
+  } else if (hash === "admin-mentors") {
+    switchTab("tab-mentors");
+  } else if (hash === "admin-users") {
+    switchTab("tab-all-users");
+  } else {
+    switchTab("tab-mentor-apps");
+  }
 
   // Filter change
   const filterSelect = document.getElementById("mentor-app-filter");

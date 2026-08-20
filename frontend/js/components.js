@@ -4,11 +4,22 @@ import { getIcon } from "./icons.js";
 /* ================================================================
    TOAST NOTIFICATIONS — Single source of truth
    ================================================================ */
-const MAX_TOASTS = 5;
+const MAX_TOASTS = 4;
 const TOAST_DURATION = 4000;
+let lastToastMessage = "";
+let lastToastTimestamp = 0;
 
 export function showToast(message, type = "success") {
   const cleanMessage = normalizeErrorMessage(message);
+  if (!cleanMessage) return;
+
+  const now = Date.now();
+  // Debounce identical toast messages within 2 seconds
+  if (cleanMessage === lastToastMessage && (now - lastToastTimestamp) < 2000) {
+    return;
+  }
+  lastToastMessage = cleanMessage;
+  lastToastTimestamp = now;
 
   let container = document.getElementById("toast-container");
   if (!container) {
@@ -18,7 +29,7 @@ export function showToast(message, type = "success") {
     document.body.appendChild(container);
   }
 
-  // Prevent duplicate toasts with same message
+  // Prevent duplicate toasts currently in the DOM
   const existing = container.querySelectorAll(".toast");
   for (const t of existing) {
     if (t.dataset.msg === cleanMessage) return;
@@ -26,7 +37,7 @@ export function showToast(message, type = "success") {
 
   // Cap max visible toasts
   while (container.children.length >= MAX_TOASTS) {
-    container.firstChild.remove();
+    removeToast(container.firstChild);
   }
 
   const toast = document.createElement("div");
@@ -42,17 +53,27 @@ export function showToast(message, type = "success") {
     <button class="toast-close" aria-label="Dismiss">&times;</button>
   `;
 
-  toast.querySelector(".toast-close").addEventListener("click", () => removeToast(toast));
+  let timer = null;
+  const dismiss = () => {
+    if (timer) clearTimeout(timer);
+    removeToast(toast);
+  };
+
+  toast.querySelector(".toast-close").addEventListener("click", dismiss);
   container.appendChild(toast);
 
-  setTimeout(() => removeToast(toast), TOAST_DURATION);
+  timer = setTimeout(() => {
+    removeToast(toast);
+  }, TOAST_DURATION);
 }
 
 function removeToast(toast) {
   if (!toast || !toast.parentNode) return;
   toast.style.opacity = "0";
   toast.style.transform = "translateY(8px)";
-  setTimeout(() => toast.remove(), 150);
+  setTimeout(() => {
+    if (toast && toast.parentNode) toast.remove();
+  }, 150);
 }
 
 /* ================================================================
